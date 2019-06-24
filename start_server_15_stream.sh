@@ -1,0 +1,23 @@
+cd /data/tts_as_stream_sockets/; \
+wkr-serving-start \
+-port_in=8072 \
+-port_out=8074 \
+-http_port=8076 \
+-http_stat_dashboard=/zserver/AI-projects/AILab/synthersize-as-service/plugin/dashboard \
+-model_dir=/data/ailabserver-models/viettts_singlevoice \
+-tacotron_model_name=TrangTay-BN-04-18-2019-tf18.pb \
+-tacotron_config_name=tacotron_modelsb/small.tacotron.upper.json.trangtay.v70 \
+-waveglow_model_name=waveglow_local_1010000.pth \
+-waveglow_config_name=waveglow.config.json \
+-tac_num_worker=2  \
+-tac_batch_size=2 \
+-target_max_seq_len=150 \
+-tac_device_map 1 -1 \
+-tac_batch_group_timeout=20 \
+-tac_gpu_memory_fraction=0.25 \
+-wav_num_worker=2 \
+-wav_device_map 1 2 \
+-mel_lens 250 250 \
+-wav_batch_size=1 \
+-wav_gpu_memory_fraction=0.25 \
+-log_dir /data/log/tts_service_stream
