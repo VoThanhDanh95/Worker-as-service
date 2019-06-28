@@ -1,3 +1,22 @@
+# Installation
+
+- step 1: clone this project to local machine
+
+- step 2: navigate to `worker-as-service/server`:
+```
+pip install -e .
+```
+
+- step 3: navigate to `worker-as-service/client`:
+```
+pip install -e .
+```
+
+- step 4: read example in `worker-as-service/example` for custom server:
+
+
+
+---
 <h1 align="center">bert-as-service</h1>
 
 <p align="center">Using BERT model as a sentence encoding service, i.e. mapping a variable-length sentence to a fixed-length vector.</p>
