@@ -12,11 +12,11 @@ class WKRHardWorker(WKRWorkerSkeleton):
 
     def __init__(self, id, args, worker_address_list, sink_address, device_id):
         super().__init__(id, args, worker_address_list, sink_address, device_id, 
-        args.wkr_gpu_memory_fraction, 
-        args.wkr_model_name, 
-        args.wkr_batch_size, 
-        args.wkr_batch_group_timeout, 
-        args.wkr_tmp_folder, 
+        args.gpu_memory_fraction, 
+        args.model_name, 
+        args.batch_size, 
+        args.batch_group_timeout, 
+        args.tmp_folder, 
         name='HARD-WORKER', color='blue')
 
     def get_env(self, device_id, tmp_dir):

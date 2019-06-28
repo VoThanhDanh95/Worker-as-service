@@ -24,47 +24,32 @@ from .protocol import *
 from .http import BertHTTPProxy
 from .zmq_decor import multi_socket
 
-from .presink import WKRPreSink
 from .postsink import WKRSink
-from .preprocess_worker import WKRPreprocessWorker
 from .hard_worker import WKRHardWorker
 from .statistic import ServerStatistic
 
-__all__ = ['__version__', 'WKRServer', 'WKRHardWorker', 'WKRPreprocessWorker']
+__all__ = ['__version__', 'WKRServer', 'WKRHardWorker']
 __version__ = '1.0.0-a'
 
 class WKRServer(threading.Thread):
-    def __init__(self, args, preprocessor=WKRPreprocessWorker, hardprocesser=WKRHardWorker):
+    def __init__(self, args, hardprocesser=WKRHardWorker):
         super().__init__()
         
-        self.preprocessor_skeleton = preprocessor
-        if not issubclass(self.preprocessor_skeleton, WKRPreprocessWorker):
-            raise AssertionError('preprocessor must inherit from class WKRPreprocessWorker')
-
         self.hardprocessor_skeleton = hardprocesser
         if not issubclass(self.hardprocessor_skeleton, WKRHardWorker):
             raise AssertionError('hardprocesser must inherit from class WKRHardWorker')
 
         self.model_dir = args.model_dir
 
-        self.pre_num_worker = args.pre_num_worker
-        self.pre_device_map = args.pre_device_map
-        self.pre_gpu_memory_fraction = args.pre_gpu_memory_fraction
-        self.pre_all_cpu = args.pre_cpu
+        self.num_worker = args.num_worker
+        self.device_map = args.device_map
+        self.gpu_memory_fraction = args.gpu_memory_fraction
+        self.all_cpu = args.cpu
 
-        self.wkr_num_worker = args.wkr_num_worker
-        self.wkr_device_map = args.wkr_device_map
-        self.wkr_gpu_memory_fraction = args.wkr_gpu_memory_fraction
-        self.wkr_all_cpu = args.wkr_cpu
+        self.num_concurrent_postsocket = max(8, args.num_worker * 2)
+        self.batch_size = args.batch_size
 
-        # tacotron settings
-        self.num_concurrent_presocket = max(8, args.pre_num_worker * 2)
-        self.pre_batch_size = args.pre_batch_size
-
-        self.num_concurrent_postsocket = max(8, args.wkr_num_worker * 2)
-        self.wkr_batch_size = args.wkr_batch_size
-
-        self.total_concurrent_socket = self.num_concurrent_presocket+self.num_concurrent_postsocket
+        self.total_concurrent_socket = self.num_concurrent_postsocket
 
         self.port = args.port
         self.args = args
@@ -125,58 +110,32 @@ class WKRServer(threading.Thread):
     @zmqd.context()
     @zmqd.socket(zmq.PULL)
     @zmqd.socket(zmq.PAIR)
-    @zmqd.socket(zmq.PAIR)
     @multi_socket(zmq.PUSH, num_socket='total_concurrent_socket')
-    def _run(self, _, frontend, presink, sink, *backend_socks):
+    def _run(self, _, frontend, sink, *backend_socks):
 
-        backend_presocks = backend_socks[:self.num_concurrent_presocket]
-        backend_postsocks = backend_socks[-self.num_concurrent_postsocket:]
-
-        def push_new_job(client, req_id, msg):
+        def push_new_job(client, req_id, msg_raw, msg_info_raw):
             _sock = rand_backend_socket
-            send_to_next(self.transfer_protocol, client, req_id, msg, _sock)
-            # _sock.send_multipart([_job_id, _msg])
+            send_to_next_raw(client, req_id, msg_raw, msg_info_raw, _sock)
 
         # bind all sockets
         self.logger.info('bind all sockets')
         frontend.bind('tcp://*:%d' % self.port)
-        addr_front2presink = auto_bind(presink)
-        addr_front2postsink = auto_bind(sink)
+        addr_front2sink = auto_bind(sink)
 
-        addr_backend_pre_list = [auto_bind(b) for b in backend_presocks]
-        self.logger.info('open %d navigator-preprocess worker sockets' % len(addr_backend_pre_list))
-        addr_backend_post_list = [auto_bind(b) for b in backend_postsocks]
-        self.logger.info('open %d presink-main worker sockets' % len(addr_backend_post_list))
-
-        # self, args, front_presink_addr, worker_address_list
-        self.logger.info('start the pre-sink')
-        proc_presink = WKRPreSink(self.args, addr_front2presink, addr_backend_post_list)
-        self.processes.append(proc_presink)
-        proc_presink.start()
-        addr_presink = presink.recv().decode('ascii')
-        addr_pre_post_sink = presink.recv().decode('ascii')
+        addr_backend_post_list = [auto_bind(b) for b in backend_socks]
+        self.logger.info('open %d worker sockets' % len(addr_backend_post_list))
 
         # start the sink process
-        self.logger.info('start the post-sink')
-        proc_postsink = WKRSink(self.args, addr_front2postsink, addr_pre_post_sink, addr_backend_post_list)
+        self.logger.info('start the sink')
+        proc_postsink = WKRSink(self.args, addr_front2sink, addr_backend_post_list)
         self.processes.append(proc_postsink)
         proc_postsink.start()
         addr_sink = sink.recv().decode('ascii')
 
-        # start the pre-backend processes
-        # TaceWorker: self, id, args, worker_address_list, sink_address, device_id
-        self.logger.info('start pre-workers')
-        device_map_preprocess = self._get_device_map(self.pre_num_worker, self.pre_device_map, self.pre_gpu_memory_fraction, run_all_cpu=self.pre_all_cpu)
-        for idx, device_id in enumerate(device_map_preprocess):
-            process = self.preprocessor_skeleton(idx, self.args, addr_backend_pre_list, addr_presink, device_id)
-            self.processes.append(process)
-            process.start()
-            # process.is_ready.wait() # start model sequencely
-
         # start the post-backend processes
         # WaveWorker: self, id, args, worker_address_list, sink_address, device_id
         self.logger.info('start main-workers')
-        device_map_main_worker = self._get_device_map(self.wkr_num_worker, self.wkr_device_map, self.wkr_gpu_memory_fraction, run_all_cpu=self.wkr_all_cpu)
+        device_map_main_worker = self._get_device_map(self.num_worker, self.device_map, self.gpu_memory_fraction, run_all_cpu=self.all_cpu)
         for idx, device_id in enumerate(device_map_main_worker):
             process = self.hardprocessor_skeleton(idx, self.args, addr_backend_post_list, addr_sink, device_id)
             self.processes.append(process)
@@ -216,56 +175,46 @@ class WKRServer(threading.Thread):
                     self.logger.info('new config request\treq id: %d\tclient: %s' % (int(req_id), client))
                     status_runtime = {'client': client.decode('ascii'),
                                       'num_process': len(self.processes),
-                                      'navigator -> pre-worker': addr_backend_pre_list,
-                                      'pre-worker -> pre-sink': addr_presink,
-                                      'pre-sink -> post-worker': addr_backend_post_list,
-                                      'post-worker -> sink': addr_sink,
-                                      'navigator <-> pre-sink': addr_front2presink,
-                                      'navigator <-> sink': addr_front2postsink,
-                                      'pre-sink <-> sink': addr_pre_post_sink,
+                                      'navigator -> worker': addr_backend_post_list,
+                                      'worker -> sink': addr_sink,
                                       'server_current_time': str(datetime.now()),
                                       'statistic': server_status.value,
-                                      'preprocessor_device_map': device_map_preprocess,
-                                      'preprocessor_batch_size': self.pre_batch_size,
                                       'main_device_map': device_map_main_worker,
-                                      'main_batch_size': self.wkr_batch_size,
+                                      'main_batch_size': self.batch_size,
                                       'protocol': self.transfer_protocol,
-                                      'num_concurrent_presocket': self.num_concurrent_presocket,
-                                      'num_concurrent_postsocket': self.num_concurrent_postsocket,
-                                      'total_concurrent_socket': self.total_concurrent_socket}
-                    presink.send_multipart([client, msg, jsonapi.dumps({**status_runtime,
+                                      'num_concurrent_socket': self.total_concurrent_socket}
+                    sink.send_multipart([client, msg, jsonapi.dumps({**status_runtime,
                                                                      **self.status_args,
                                                                      **self.status_static}), req_id])
                 else:
-                    self.logger.info('new encode request\treq id: %s\info: %s\tclient: %s' %
-                                     (str(req_id), str(msg_info), client))
+                    self.logger.info('new encode request\treq id: %s\tclient: %s' %
+                                     (str(req_id), client))
 
                     # regist job
-                    presink.send_multipart([client, ServerCmd.new_job, msg_info, req_id])
+                    sink.send_multipart([client, ServerCmd.new_job, jsonapi.dumps({'job_parts': '1', 'split_info': {}}), to_bytes(req_id)])
 
                     # pick random socket
-                    rand_backend_socket = random.choice([b for b in backend_presocks if b != rand_backend_socket])
+                    rand_backend_socket = random.choice([b for b in backend_socks if b != rand_backend_socket])
 
-                    info = jsonapi.loads(msg_info)
-                    if self.transfer_protocol == 'obj':
-                        msg = decode_object(msg, info)
-                    else:
-                        msg = decode_ndarray(msg, info)
+                    # info = jsonapi.loads(msg_info)
+                    # if self.transfer_protocol == 'obj':
+                    #     msg = decode_object(msg, info)
+                    # else:
+                    #     msg = decode_ndarray(msg, info)
 
                     # push job
-                    push_new_job(client, req_id, msg)
-                    # job_id = client + b'#' + req_id
-                    # push_new_job(job_id, msg, msg_info)
+                    push_new_job(client, req_id, msg, msg_info)
 
         for p in self.processes:
             p.close()
 
         self.logger.info('terminated!')
 
-    def _get_device_map(self, num_worker, device_map, per_process_gpu_fragment, run_all_cpu=False):
+    def _get_device_map(self, num_worker, device_map_raw, per_process_gpu_fragment, run_all_cpu=False):
         self.logger.info('get devices map')
         run_on_gpu = False
         device_map = [-1] * num_worker
+
         if not run_all_cpu:
             try:
                 import GPUtil
@@ -278,12 +227,18 @@ class WKRServer(threading.Thread):
                 elif 0 < num_avail_gpu < num_worker:
                     self.logger.warning('only %d out of %d GPU(s) is available/free, but "num_worker=%d"' %
                                         (num_avail_gpu, num_all_gpu, num_worker))
+                    if not device_map_raw:
+                        self.logger.warning('multiple workers will be allocated to one GPU, '
+                                            'may not scale well and may raise out-of-memory')
+                    else:
+                        self.logger.warning('workers will be allocated based on "-device_map=%s", '
+                                            'may not scale well and may raise out-of-memory' % device_map_raw)
                     run_on_gpu = True
                 else:
                     self.logger.warning('no GPU available, fall back to CPU')
                 
                 if run_on_gpu:
-                    device_map = ((device_map or avail_gpu) * num_worker)[: num_worker]
+                    device_map = ((device_map_raw or avail_gpu) * num_worker)[: num_worker]
 
             except FileNotFoundError:
                 self.logger.warning('nvidia-smi is missing, often means no gpu on this machine. '
@@ -292,4 +247,5 @@ class WKRServer(threading.Thread):
         self.logger.info('device map: \n\t\t%s' % '\n\t\t'.join(
             'worker %2d -> %s' % (w_id, ('gpu %2d' % g_id) if g_id >= 0 else 'cpu') for w_id, g_id in
             enumerate(device_map)))
+
         return device_map

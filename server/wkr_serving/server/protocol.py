@@ -7,7 +7,7 @@ from zmq.utils import jsonapi
 __all__ = ['ServerCmd', 
            'send_to_next', 'recv_from_prev',
            'to_bytes', 'to_str', 
-           'send_object', 'recv_object', 'send_ndarray', 'decode_ndarray', 'decode_object', 'send_to_next_raw']
+           'send_object', 'recv_object', 'send_ndarray', 'decode_ndarray', 'decode_object', 'send_to_next_raw', 'recv_from_prev_raw']
 
 class ServerCmd:
     terminate = b'TERMINATION'
@@ -42,14 +42,17 @@ def recv_from_prev(protocol, src):
 def send_to_next_raw(client, req_id, msg, msg_info, dst, flags=0, copy=True, track=False):
     dst.send_multipart([to_bytes(client), to_bytes(req_id), msg, msg_info], flags, copy=copy, track=track)
 
+def recv_from_prev_raw(src):
+    client, req_id, msg, msg_info = src.recv_multipart()
+    return client, req_id, msg, msg_info
+
 def send_ndarray(dst, client, job_id, array, flags=0, copy=True, track=False):
     md = dict(dtype=str(array.dtype), shape=array.shape)
     msg_info = jsonapi.dumps(md)
     send_to_next_raw(client, job_id, array, msg_info, dst, flags=flags, copy=copy, track=track )
 
 def recv_ndarray(src):
-    msg = src.recv_multipart()
-    client, req_id, msg, msg_info = msg
+    client, req_id, msg, msg_info = recv_from_prev_raw(src)
     arr_info, arr_val = jsonapi.loads(msg_info), msg
     array = decode_ndarray(arr_val, arr_info)
     return to_str(client), to_str(req_id), array, arr_info
@@ -67,8 +70,7 @@ def send_object(dst, client, job_id, obj, flags=0, copy=True, track=False, proto
     send_to_next_raw(client, job_id, z, obj_info, dst, flags=flags, copy=copy, track=track )
 
 def recv_object(src):
-    msg = src.recv_multipart()
-    client, req_id, msg, msg_info = msg
+    client, req_id, msg, msg_info = recv_from_prev_raw(src)
     obj_info, obj_buffer = jsonapi.loads(msg_info), msg
     obj = decode_object(obj_buffer, obj_info)
     return to_str(client), to_str(req_id), obj, obj_info

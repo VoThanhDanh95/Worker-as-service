@@ -122,6 +122,10 @@ class WKRWorkerSkeleton(Process):
             try:
                 client_ids, input_data = msg['client_ids'], msg['input_data']
                 outputs = self.predict(model, input_data)
+
+                if len(outputs) != len(input_data):
+                    logger.warning("output after process by predict func not match. input: {}, output: {}".format(input_data, outputs))
+
                 outputs = output_postprocessor(outputs)
                 for client_id, output in zip(client_ids, outputs):
                     cliend, req_id = client_id.split('#')

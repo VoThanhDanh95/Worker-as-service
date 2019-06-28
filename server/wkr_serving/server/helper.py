@@ -112,54 +112,29 @@ def get_args_parser():
 
     group1.add_argument('-model_dir', type=str, required=True,
                         help='directory of models')
-    group1.add_argument('-pre_model_name', type=str, default=None,
-                        help='filename of the preprocessor model.')
-    group1.add_argument('-pre_tmp_folder', type=str, default='tmp_pre',
-                        help='name of the preprocessor temporary folder.')
-    group1.add_argument('-wkr_model_name', type=str, default=None,
+    group1.add_argument('-model_name', type=str, default=None,
                         help='filename of the main worker model.')
-    group1.add_argument('-wkr_tmp_folder', type=str, default='tmp_wkr',
+    group1.add_argument('-tmp_folder', type=str, default='tmp_wkr',
                         help='name of the main worker temporary folder.')
-
-    groupta = parser.add_argument_group('Preprocessor Parameters',
-                                       'config how preprocessor work')
-    groupta.add_argument('-pre_gpu_memory_fraction', type=float, default=0.1,
-                        help='determine the fraction of the overall amount of memory \
-                        that each visible GPU should be allocated per Tacotron worker. \
-                        Should be in range [0.0, 1.0]')
-    groupta.add_argument('-pre_num_worker', type=int, default=1,
-                        help='number of server instances')
-    groupta.add_argument('-pre_batch_size', type=check_batch_size, default=1,
-                        help='batch size of tacotron worker, large batch size mean optimize for heavy computation')
-    groupta.add_argument('-pre_batch_group_timeout', type=int, default=1,
-                        help='maximum time(ms) for wait for a new request')
-    groupta.add_argument('-pre_cpu', action='store_true', default=False,
-                        help='running on CPU (default on GPU)')
-    groupta.add_argument('-pre_device_map', type=int, nargs='+', default=[],
-                        help='specify the list of GPU device ids that will be used (id starts from 0). \
-                        If num_worker > len(device_map), then device will be reused; \
-                        if num_worker < len(device_map), then device_map[:num_worker] will be used')
-
 
     groupwa = parser.add_argument_group('Main Worker Parameters',
                                        'config how main model work')
-    groupwa.add_argument('-wkr_gpu_memory_fraction', type=float, default=0.2,
+    groupwa.add_argument('-gpu_memory_fraction', type=float, default=0.2,
                         help='determine the fraction of the overall amount of memory \
                         that each visible GPU should be allocated per Waveglow worker. \
                         Should be in range [0.0, 1.0]')
-    groupwa.add_argument('-wkr_num_worker', type=int, default=1,
+    groupwa.add_argument('-num_worker', type=int, default=1,
                         help='number of server instances')
-    groupwa.add_argument('-wkr_batch_size', type=int, default=10,
+    groupwa.add_argument('-batch_size', type=int, default=10,
                         help='maximum number of sequences handled by each worker')
-    groupwa.add_argument('-wkr_batch_group_timeout', type=int, default=1,
+    groupwa.add_argument('-batch_group_timeout', type=int, default=1,
                         help='maximum time(ms) for wait for a new request, we all need waveglow to fix input shape, so need to wait a much longer')
-    groupwa.add_argument('-wkr_cpu', action='store_true', default=False,
+    groupwa.add_argument('-cpu', action='store_true', default=False,
                         help='running on CPU (default on GPU)')
-    groupwa.add_argument('-wkr_device_map', type=int, nargs='+', default=[],
+    groupwa.add_argument('-device_map', type=int, nargs='+', default=[],
                         help='specify the list of GPU device ids that will be used (id starts from 0). \
                         If num_worker > len(device_map), then device will be reused; \
                         if num_worker < len(device_map), then device_map[:num_worker] will be used')
-
 
     group3 = parser.add_argument_group('Serving Configs',
                                        'config how server utilizes GPU/CPU resources')
