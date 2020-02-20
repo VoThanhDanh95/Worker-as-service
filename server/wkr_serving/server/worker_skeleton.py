@@ -98,6 +98,9 @@ class WKRWorkerSkeleton(Process):
     def run(self):
         self._run()
 
+    def process_output(self, data, client, req_id, target_sink):
+        send_to_next(self.transfer_proto, client, req_id, data, target_sink)
+
     @zmqd.socket(zmq.PUSH)
     @multi_socket(zmq.PULL, num_socket='num_concurrent_socket')
     def _run(self, sink_embed, *receivers):
@@ -119,18 +122,37 @@ class WKRWorkerSkeleton(Process):
 
         generator = self.input_fn_builder(receivers, input_preprocessor)
         for msg in generator():
+            client_ids, input_data = msg['client_ids'], msg['input_data']
             try:
-                client_ids, input_data = msg['client_ids'], msg['input_data']
+                start = time.time()
                 outputs = self.predict(model, input_data)
+                end = time.time()
+
+                logger.info('predict {} url in {:0.4f}s'.format(len(input_data), end-start))
+
+                if len(outputs) != len(input_data):
+                    logger.warning("output after process by predict func not match. input: {}, output: {}".format(input_data, outputs))
+
                 outputs = output_postprocessor(outputs)
                 for client_id, output in zip(client_ids, outputs):
                     cliend, req_id = client_id.split('#')
-                    send_to_next(self.transfer_proto, cliend, req_id, output, sink_embed)
-
+                    self.process_output(output, cliend, req_id, sink_embed)
+                    # send_to_next(self.transfer_proto, cliend, req_id, output, sink_embed)
+                    logger.info('sent to sink\tjob id: {}#{}'.format(cliend, req_id))
+                    
             except Exception as e:
                 import traceback
-                tb=traceback.format_exc()
-                logger.error('{}\n{}'.format(e, tb))
+                tb = traceback.format_exc()
+                logger.error('{}'.format(e), exc_info=True)
+
+                # building exception message
+                cids = list(set([client_id.split('#')[0] for client_id in client_ids]))
+                exception_msg = 'Exception when processing input batch of {} elements, from {} different client ids ({}). Please check your input.'.format(len(input_data), len(cids), ', '.join(cids))
+                exception_msg = '{}\n{}\n{}'.format(tb, e, exception_msg)
+                # send exception for all client in batches
+                for client_id in client_ids:
+                    cliend, req_id = client_id.split('#')
+                    send_to_next_raw(to_bytes(cliend), to_bytes(req_id), to_bytes(exception_msg), ServerCmd.exception, sink_embed)
 
     def input_fn_builder(self, socks, input_preprocessor):
         def gen():
@@ -142,8 +164,8 @@ class WKRWorkerSkeleton(Process):
             for sock in socks:
                 poller.register(sock, zmq.POLLIN)
 
-            logger.info('ready and listening!')
             self.is_ready.set()
+            logger.info('ready and listening!')
 
             def get_single_data(timeout=20):
                 events = dict(poller.poll(timeout=timeout))
@@ -179,5 +201,6 @@ class WKRWorkerSkeleton(Process):
                     import traceback
                     tb=traceback.format_exc()
                     logger.error('{}\n{}'.format(e, tb))
+                    # TODO: handler crash report here
 
         return gen

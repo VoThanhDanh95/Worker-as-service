@@ -27,8 +27,8 @@ if sys.version_info >= (3, 0):
 else:
     from ._py2_var import *
 
-_Response = namedtuple('_Response', ['id', 'content'])
-Response = namedtuple('Response', ['id', 'embedding'])
+_Response = namedtuple('_Response', ['id', 'content', 'error_raised'])
+Response = namedtuple('Response', ['id', 'embedding', 'error_code', 'error_message'])
 
 class WKRClient(object):
     def __init__(self, ip='localhost', port=5555, port_out=5556,
@@ -103,10 +103,10 @@ class WKRClient(object):
         self.length_limit = 0
         self.token_info_available = False
 
-        s_status = self.server_status
-        
-        if s_status['protocol'] != self.protocol:
-            raise AttributeError('Protocol mismatch. Target server using protocol "{}" while this client use "{}"'.format(s_status['protocol'], self.protocol))
+        if not ignore_all_checks:
+            s_status = self.server_status
+            if s_status['protocol'] != self.protocol:
+                raise AttributeError('Protocol mismatch. Target server using protocol "{}" while this client use "{}"'.format(s_status['protocol'], self.protocol))
 
         if not ignore_all_checks and (check_version or show_server_config or check_length):
             if check_version and s_status['server_version'] != self.status['client_version']:
@@ -144,6 +144,7 @@ class WKRClient(object):
         else:
             send_to_next(self.protocol, self.identity, req_id, msg, self.sender)
 
+        # print(req_id)
         self.pending_request.add(req_id)
         return req_id
 
@@ -156,20 +157,31 @@ class WKRClient(object):
             while True:
                 # a request has been returned and found in pending_response
                 if wait_for_req_id in self.pending_response:
-                    response = self.pending_response.pop(wait_for_req_id)
-                    return _Response(wait_for_req_id, response)
+                    response, raised_error = self.pending_response.pop(wait_for_req_id)
+                    return _Response(wait_for_req_id, response, raised_error)
 
                 # receive a response
                 protocol = force_protocol if force_protocol != None else self.protocol
-                client, req_id, msg, msg_info = recv_from_prev(protocol, self.receiver)
-                request_id = req_id
+                raised_error = False
+                try:
+                    client, req_id, msg, msg_info = recv_from_prev(protocol, self.receiver)
+                except ProcessingError as e:
+                    client, req_id, msg = e.client_id, e.req_id, e.raw_msg
+                    raised_error = True
+                except Exception as e:
+                    raise e
 
+                request_id = str(req_id)
+
+                # print(request_id)
                 # if not wait for particular response then simply return
                 if not wait_for_req_id or (wait_for_req_id == request_id):
-                    self.pending_request.remove(request_id)
-                    return _Response(request_id, msg)
+                    # print(self.pending_request, request_id)
+                    if request_id in self.pending_request:
+                        self.pending_request.remove(request_id)
+                    return _Response(request_id, msg, raised_error)
                 elif wait_for_req_id != request_id:
-                    self.pending_response[request_id] = msg
+                    self.pending_response[request_id] = msg, raised_error
                     # wait for the next response
         except Exception as e:
             raise e
@@ -178,8 +190,12 @@ class WKRClient(object):
                 self.pending_request.remove(wait_for_req_id)
 
     def _recv_ndarray(self, wait_for_req_id=None):
-        request_id, response = self._recv(wait_for_req_id)
-        return Response(request_id, response)
+        request_id, response, error_raised = self._recv(wait_for_req_id)
+        if error_raised:
+            return Response(request_id, None, 1, response)
+        else:
+            return Response(request_id, response, 0, 'success')
+
 
     @property
     def status(self):
@@ -249,7 +265,10 @@ class WKRClient(object):
             return None
 
         r = self._recv_ndarray(req_id)
-        return r.embedding
+        if r.error_code == 0:
+            return r.embedding
+        else:
+            raise Exception(r.error_message)
 
     def fetch(self, delay=.0):
         """ Fetch the encoded vectors from server, use it with `encode(blocking=False)`
@@ -270,7 +289,7 @@ class WKRClient(object):
         while self.pending_request:
             yield self._recv_ndarray()
 
-    def fetch_all(self, sort=True, concat=False, parse_id_func=None):
+    def fetch_all(self, sort=True, concat=False, parse_id_func=None, return_id=False):
         """ Fetch all encoded vectors from server, use it with `encode(blocking=False)`
 
         Use it `encode(texts, blocking=False)`. If there is no pending requests, it will return None.
@@ -285,11 +304,20 @@ class WKRClient(object):
         """
         if self.pending_request:
             tmp = list(self.fetch())
+
+            # check for exception
+            for t in tmp:
+                if t.error_code == 1:
+                    warnings.warn("Request with id: {}\nRaised an error from server with message:\n{}".format(t.id, t.error_message))
+
             if sort:
                 if parse_id_func is None:
                     parse_id_func = lambda v: v.id
                 tmp = sorted(tmp, key=parse_id_func)
-            tmp = [v.embedding for v in tmp]
+            if return_id:
+                tmp = [(v.id, v.embedding) for v in tmp]
+            else:
+                tmp = [v.embedding for v in tmp]
             if concat:
                 if self.protocol == 'numpy':
                     tmp = np.concatenate(tmp, axis=0)
@@ -341,20 +369,33 @@ class WKRClient(object):
 
 
 class BCManager():
-    def __init__(self, available_bc):
+    def __init__(self, available_bc, retry=0, retry_gap=0.05):
         self.available_bc = available_bc
         self.bc = None
+        self.retry = retry
+        self.retry_gap = retry_gap
+
+    def _enter_bc(self, retry=0, retry_gap=0.05):
+        try:
+            self.bc = self.available_bc.pop()
+            return self.bc
+        except Exception as e:
+            if retry > 0:
+                random_amount = 0.1*retry_gap*(np.random.random()*2-1) # prevent deadlock
+                time.sleep(retry_gap + random_amount)   
+                return self._enter_bc(retry=retry-1)
+            else:
+                raise e
 
     def __enter__(self):
-        self.bc = self.available_bc.pop()
-        return self.bc
+        return self._enter_bc(retry=self.retry, retry_gap=self.retry_gap)
 
     def __exit__(self, *args):
         self.available_bc.append(self.bc)
 
 
 class ConcurrentWKRClient(WKRClient):
-    def __init__(self, max_concurrency=10, **kwargs):
+    def __init__(self, max_concurrency=10, retry=0, retry_gap=0.05, **kwargs):
         """ A thread-safe client object connected to a TTSServer
 
         Create a WKRClient that connects to a TTSServer.
@@ -375,6 +416,8 @@ class ConcurrentWKRClient(WKRClient):
 
         self.available_bc = [WKRClient(**kwargs) for _ in range(max_concurrency)]
         self.max_concurrency = max_concurrency
+        self.retry = retry
+        self.retry_gap = retry_gap
 
     def close(self):
         for bc in self.available_bc:
@@ -384,7 +427,7 @@ class ConcurrentWKRClient(WKRClient):
         @wraps(func)
         def arg_wrapper(self, *args, **kwargs):
             try:
-                with BCManager(self.available_bc) as bc:
+                with BCManager(self.available_bc, retry=self.retry, retry_gap=self.retry_gap) as bc:
                     f = getattr(bc, func.__name__)
                     r = f if isinstance(f, dict) else f(*args, **kwargs)
                 return r

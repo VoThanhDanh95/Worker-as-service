@@ -1,75 +1,54 @@
-from threading import Thread
-import random
+import time
+import numpy as np
+import json
+import pickle
+from collections import defaultdict
+import matplotlib.pyplot as plt
+from wkr_serving.client import WKRClient
 
-def run(idd, timm=1):
-    import time
+bc = WKRClient(ip='10.40.34.15', port=8770, port_out=8772, check_version=False, protocol='obj')
+
+input = np.zeros((300,300))
+bc.encode(input).shape
+
+def kb_size(obj):
+    return len(pickle.dumps(obj))/1024
+
+def print_kb_size(obj):
+    print("{:.2f} (kB)".format(kb_size(obj)))
     
-    sentenses = []
-    max_len=0
-    for _ in range(timm):
-        s = ', '.join(['xin chao']*random.randint(2, 9))
-        sentenses.append(s)
-        max_len = len(s) if len(s) > max_len else max_len
+def atime_cal(arr):
+    return np.mean(arr)*1000
+    
+def print_time(arr):
+    print("{:.2f} (ms)".format(atime_cal(arr)))
 
-    return sentenses[0]
+def bench(input, paralell=10, exp=100):
+    obj_size = kb_size(input)
+    def a(input, num=1):
+        start = time.time()
+        for _ in range(num):
+            bc.encode(input, blocking=False)
+        bc.fetch_all()
+        return (time.time()-start)/num
+    bb = [a(input, num=paralell) for _ in range(exp)]
+    atim = atime_cal(bb)
+    return obj_size, atim
 
-def run_time(idd, dup, timee):
-    from wkr_serving.client import WKRClient
-    import time
+objs = [
+    {"content": "tôi là bê tô", "matrix": np.zeros((640,640,3)).astype(np.uint8)},
+    {"content": "tôi là bê tô", "matrix": np.zeros((300,300,3)).astype(np.uint8)},
+    {"content": "tôi là bê tô", "matrix": np.zeros((224,224,3)).astype(np.uint8)},
+    {"content": "tôi là bê tô", "matrix": np.zeros((112,112,3)).astype(np.uint8)},
+    {"content": "tôi là bê tô", "matrix": np.arange(25).reshape(5,5).astype(np.float32)}
+]
 
-    bc = WKRClient(ip='0.0.0.0', check_version=False, port=8066, port_out=8068, ignore_all_checks=True)
+records = defaultdict(lambda: defaultdict(float))
 
-    for i in range(timee):
-        e = bc.encode(run(idd, dup))
-        print("{}\t{}".format(idd, e.shape))
+for obj in objs:
+    for par in [1,2,4,8,16,32,64,128]:
+        size, tim = bench(obj, paralell=par)
+        records[size][par] = tim
 
-    # def generator():
-    #     i = 0
-    #     for _ in range(timee):
-    #         yield run(idd, bc, dup)
-    #         i+=1
-    #         time.sleep(random.randint(2, 6))
-    #     print('SENT:', idd, 'called:', i)
-
-    # r = 0
-    # def receiver(gen):
-    #     for res in gen:
-    #         e = res.embedding
-    #         print("{}\t{}".format(idd, e.shape))
-
-    # output_generator = bc.encode_async(generator(), delay=0.1)
-
-    # while True:
-    #     receiver(output_generator)
-    #     if bc.pending_request:
-    #         pass
-    #     else:
-    #         time.sleep(0.1)
-    #     output_generator = bc.fetch(delay=0.1)
-
-    bc.close()
-
-    print('DONE:', idd, 'called:', r)
-
-def test_ping(idd):
-    random_dup = 1#random.randint(1, 6)
-    # random_time = random.randint(70, 100)
-    random_time = random.randint(2, 3)
-    t = Thread(target=run_time, args=(idd, random_dup, random_time))
-    t.daemon = True
-    t.start()
-
-if __name__ == '__main__':
-    import time
-
-    a = 0
-    for i in range(4):
-        print(i)
-        test_ping(a)
-        a+=1
-    print('\n')
-
-    for i in range(100000):
-        time.sleep(50)
-        # test_ping(a)
-        a+=1
+with open('records16.bin', 'wb') as f:
+    pickle.dump(dict(records), f)
