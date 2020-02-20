@@ -160,61 +160,39 @@ const vm = new Vue({
                     vm.addNewTimeData(vm.hist_num_client, vm.results.statistic.num_total_client, false);
                     vm.addNewTimeData(vm.hist_num_response, vm.results.statistic_postsink.num_data_request, true, refreshTime);
 
-                    vm.addNewTimeData(vm.hist_tacotron_util, vm.results.statistic_presink.util, false);
-                    vm.addNewTimeData(vm.hist_waveglow_util, vm.results.statistic_postsink.util, false);
+                    vm.addNewTimeData(vm.hist_tacotron_util, vm.results.statistic_postsink.util, false);
+                    // vm.addNewTimeData(vm.hist_waveglow_util, vm.results.statistic_postsink.util, false);
 
                     // add to top deck, high priority
                     
-                    vm.addToDeck('Last Rq/S', parseInt(vm.hist_num_request['value'].slice(-1)[0]*1000)/1000, vm.first_deck, false);
-                    
-                    vm.addToDeck('Last Rp/S', parseInt(vm.hist_num_response['value'].slice(-1)[0]*1000)/1000, vm.first_deck, false);
-                    vm.addToDeck('Serving', vm.results.statistic.num_data_request-vm.results.statistic_postsink.num_data_request-1, vm.first_deck);
-                    
+                    var taco_total_device = vm.results.num_worker
+
+                    var system_crash = vm.results.statistic_postsink.num_exception
+
                     // other dynamic stat to the second deck
-                    vm.addToDeck('Request', vm.results.statistic.num_data_request-1, vm.second_deck);
-                    vm.addToDeck('Response', vm.results.statistic_postsink.num_data_request, vm.second_deck);
-                    vm.addToDeck('Sys call.', vm.results.statistic.num_sys_request, vm.second_deck);
-                    // vm.addToDeck('Avg Rq/S', parseInt(vm.results.statistic.avg_request_per_second*1000)/1000, vm.second_deck);
-                    // vm.addToDeck('Avg Rp/S', parseInt(vm.results.statistic_postsink.avg_request_per_second*1000)/1000, vm.second_deck);
+                    vm.addToDeck('∑Request', vm.results.statistic.num_data_request-1, vm.first_deck);
+                    vm.addToDeck('∑Response', vm.results.statistic_postsink.num_data_request, vm.first_deck);
+                    vm.addToDeck('∑Crash', system_crash, vm.first_deck);
+                    vm.addToDeck('Serving', vm.results.statistic.num_data_request-vm.results.statistic_postsink.num_data_request-vm.results.statistic_postsink.num_sys_request, vm.first_deck);
+                    vm.addToDeck('Job left', vm.results.statistic_postsink.total_job_in_queue, vm.first_deck);
 
                     // mostly constant stat to the third deck
-                    vm.addToDeck('Server version', vm.results.server_version, vm.second_deck);
+                    // vm.addToDeck('Server version', vm.results.server_version, vm.second_deck);
                     vm.addToDeck('Uptime', vm.runningTime, vm.second_deck);
+                    vm.addToDeck('Num workers', taco_total_device, vm.second_deck);
+                    vm.addToDeck('Batch size', vm.results.batch_size, vm.second_deck);
 
                     // tacotron info
-                    var taco_total_device = vm.results.tacotron_device_map.length
-                    vm.addToDeck('Workers', taco_total_device, vm.tacotron_deck_second);
-                    vm.addToDeck('Batch size', vm.results.tacotron_batch_size, vm.tacotron_deck_second);
-                    var logic_taco_device = vm.results.tacotron_device_map.map(x => x>=0?1:0).reduce(getSum);
-                    // vm.addToDeck('Running on', logic_device(logic_taco_device, taco_total_device) + ' [' + vm.results.tacotron_device_map + ']', vm.tacotron_deck_second);
-                    vm.addToDeck('Running on', '[' + vm.results.tacotron_device_map + ']', vm.tacotron_deck_second);
+                    vm.addToDeck('Util', parseInt(vm.results.statistic_postsink.util*100) + '%', vm.tacotron_deck);
+                    vm.addToDeck('Cur Rq/S', parseInt(vm.hist_num_request['value'].slice(-1)[0]*1000)/1000, vm.tacotron_deck, false);
+                    vm.addToDeck('Cur Rp/S', parseInt(vm.hist_num_response['value'].slice(-1)[0]*1000)/1000, vm.tacotron_deck, false);
 
-                    vm.addToDeck('Util', parseInt(vm.results.statistic_presink.util*100) + '%', vm.tacotron_deck);
-                    vm.addToDeck('Job left', vm.results.statistic_presink.total_job_in_queue, vm.tacotron_deck);
+                    vm.addToDeck('Avg Rq/S', parseInt(vm.results.statistic.avg_request_per_second*1000)/1000, vm.tacotron_deck_second);
+                    vm.addToDeck('Max Rq/S', parseInt(vm.results.statistic.max_request_per_second*1000)/1000, vm.tacotron_deck_second);
                     
-                    // waveglow info
-                    var wave_total_device = vm.results.waveglow_device_map.length
-                    vm.addToDeck('Workers', wave_total_device, vm.waveglow_deck_second);
-                    vm.addToDeck('Batch size', vm.results.waveglow_batch_size, vm.waveglow_deck_second);
-                    var logic_wave_device = vm.results.waveglow_device_map.map(x => x>=0?1:0).reduce(getSum);
-                    // vm.addToDeck('Running on', logic_device(logic_wave_device, wave_total_device) + '[' + vm.results.waveglow_device_map + ']', vm.waveglow_deck_second);
-                    vm.addToDeck('Running on', '[' + vm.results.waveglow_device_map + ']', vm.waveglow_deck_second);
-
-                    vm.results.allocated_mel_lens.forEach(mel_len => {
-                        var index = ''+vm.results.allocated_mel_lens.indexOf(mel_len);
-                        var util = 0;
-                        var total_serve = 0;
-                        var stat = vm.results.statistic_postsink
-                        if (index in stat.total_socket_job_in_queue) {
-                            util = parseInt(stat.total_socket_job_in_queue[index]*100/stat.maximum_socket_job_in_queue[index])
-                            total_serve = parseInt(stat.total_socket_proccessed_job[index])
-                        }
-                        vm.addToDeck('' + mel_len, ''+util+'%', vm.waveglow_decks_queues);
-                        vm.addToDeck('' + mel_len, ''+total_serve, vm.waveglow_decks_queues_stat);
-                    });
-
-                    vm.addToDeck('Util', parseInt(vm.results.statistic_postsink.util*100) + '%', vm.waveglow_deck);
-                    vm.addToDeck('Job left', vm.results.statistic_postsink.total_job_in_queue, vm.waveglow_deck);
+                    vm.addToDeck('Avg Rp/S', parseInt(vm.results.statistic_postsink.avg_request_per_second*1000)/1000, vm.tacotron_deck_second);
+                    vm.addToDeck('Max Rp/S', parseInt(vm.results.statistic_postsink.max_request_per_second*1000)/1000, vm.tacotron_deck_second);
+                    
                 },
                 complete: function () {
                     // console.log('Finished all tasks');

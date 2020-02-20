@@ -86,15 +86,34 @@ class WKRSink(Process):
 
                 if socks.get(receiver) == zmq.POLLIN:
                     client, req_id, msg, msg_info = recv_from_prev_raw(receiver)
-                    logger.info("collected {}#{}".format(client, req_id))
-                    
+                    if msg_info == ServerCmd.exception:
+                        # exception
+                        logger.error("exception processing {}#{}".format(client, req_id))
+                        sink_status.update([
+                            to_bytes(client), 
+                            ServerCmd.exception, 
+                            to_bytes(req_id), 
+                            b'1'
+                        ])
+                        
+                    else:
+                        # embeding
+                        logger.info("collected {}#{}".format(client, req_id))
+                        sink_status.update([
+                            to_bytes(client), 
+                            b'<new_request>', 
+                            to_bytes(req_id), 
+                            b'1'
+                        ])
+
                     send_to_next_raw(client, req_id, msg, msg_info, sender)
                     self.current_jobnum -= 1
                     self.total_processed += 1
                     logger.info('send back\tjob id: {}#{} \tleft: {}'.format(client, req_id, self.current_jobnum))
 
                 if socks.get(frontend) == zmq.POLLIN:
-                    client_addr, msg_type, msg_info, req_id = frontend.recv_multipart()
+                    request = frontend.recv_multipart()
+                    client_addr, msg_type, msg_info, req_id = request
                     if msg_type == ServerCmd.new_job:
                         job_id = client_addr + b'#' + req_id
                         self.current_jobnum += 1
@@ -103,8 +122,10 @@ class WKRSink(Process):
 
                     elif msg_type == ServerCmd.show_config:
                         time.sleep(0.1)  # dirty fix of slow-joiner: sleep so that client receiver can connect.
+                        sink_status.update(request)
                         logger.info('send config\tclient %s' % client_addr)
                         prev_status = jsonapi.loads(msg_info)
+                        
                         status={
                             'statistic_postsink': {**{
                                 'total_job_in_queue': self.current_jobnum,
@@ -114,9 +135,10 @@ class WKRSink(Process):
                             }, **sink_status.value}
                         }
                         send_to_next('obj', client_addr, req_id, {**prev_status, **status}, sender)
-                                          
+                    elif msg_type == ServerCmd.exception:
+                        # not yet registed to the server
+                        send_to_next_raw(client_addr, req_id, msg_info, ServerCmd.exception, sender)
+                        logger.error("exception received {}#{}".format(client_addr, req_id))
+
             except Exception as e:
-                import traceback
-                traceback.print_exc()
-                tb=traceback.format_exc()
-                logger.error('{}\n{}'.format(e, tb))
+                logger.error('{}'.format(e), exc_info=True)

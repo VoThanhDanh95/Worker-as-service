@@ -10,14 +10,14 @@ from .worker_skeleton import WKRWorkerSkeleton
 
 class WKRHardWorker(WKRWorkerSkeleton):
 
-    def __init__(self, id, args, worker_address_list, sink_address, device_id):
+    def __init__(self, id, args, worker_address_list, sink_address, device_id, name='HARD-WORKER', color='blue'):
         super().__init__(id, args, worker_address_list, sink_address, device_id, 
         args.gpu_memory_fraction, 
         args.model_name, 
         args.batch_size, 
         args.batch_group_timeout, 
         args.tmp_folder, 
-        name='HARD-WORKER', color='blue')
+        name=name, color=color)
 
     def get_env(self, device_id, tmp_dir):
         return []

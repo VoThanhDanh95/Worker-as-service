@@ -12,7 +12,7 @@ import zmq
 from termcolor import colored
 
 __all__ = ['set_logger', 'get_args_parser',
-           'check_tf_version', 'auto_bind', 'import_tf', 'import_torch']
+           'check_tf_version', 'auto_bind', 'import_tf', 'import_torch', 'import_mxnet']
 
 def set_logger(context, logger_dir=None, verbose=False):
     if os.name == 'nt':  # for Windows
@@ -23,15 +23,15 @@ def set_logger(context, logger_dir=None, verbose=False):
 
     if verbose:
         formatter = logging.Formatter(
-        '[%(asctime)s]: %(levelname)-.1s:' + context + ':[%(filename).3s:%(funcName).3s:%(lineno)3d]: %(message)s', datefmt=
+        '[%(asctime)s.%(msecs)03d]: %(levelname)-.1s:' + context + ':[%(filename).3s:%(funcName).3s:%(lineno)3d]: %(message)s', datefmt=
         '%y-%m-%d %H:%M:%S')
     else:
         formatter = logging.Formatter(
-        '[%(asctime)s]: %(levelname)-.1s:' + context + ': %(message)s', datefmt=
+        '[%(asctime)s.%(msecs)03d]: %(levelname)-.1s:' + context + ': %(message)s', datefmt=
         '%y-%m-%d %H:%M:%S')
     
     if logger_dir:
-        file_name = os.path.join(logger_dir, 'WKRServer_{:%Y-%m-%d}.log'.format(datetime.now()))
+        file_name = os.path.join(logger_dir, 'TTSServer_{:%Y-%m-%d}.log'.format(datetime.now()))
         handler = RotatingFileHandler(file_name, mode='a', maxBytes=10*1024*1024, backupCount=10, encoding=None, delay=0)
     else:
         handler = logging.StreamHandler()
@@ -148,6 +148,12 @@ def get_args_parser():
                         help='server port for receiving HTTP requests')
     group3.add_argument('-http_max_connect', type=int, default=20,
                         help='maximum number of concurrent HTTP connections')
+
+    group3.add_argument('-http_concurent_retry_num', type=int, default=100,
+                        help='maximum number of try to get concurrent HTTP connections')
+    group3.add_argument('-http_concurent_retry_gap', type=float, default=0.05,
+                        help='time gap (s) between retry of concurrent HTTP connections')
+
     group3.add_argument('-http_stat_dashboard', type=str, default='none',
                         help='dashboard template')
     group3.add_argument('-cors', type=str, default='*',
@@ -178,15 +184,39 @@ def import_tf(device_id=-1, verbose=False, use_fp16=False):
     os.environ['TF_FP16_MATMUL_USE_FP32_COMPUTE'] = '0' if use_fp16 else '1'
     os.environ['TF_FP16_CONV_USE_FP32_COMPUTE'] = '0' if use_fp16 else '1'
     import tensorflow as tf
-    tf.logging.set_verbosity(tf.logging.DEBUG if verbose else tf.logging.ERROR)
+    try:
+        tf.logging.set_verbosity(tf.logging.DEBUG if verbose else tf.logging.ERROR)
+        # tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
+    except:
+        pass
     return tf
 
-def import_torch(device_id=-1, verbose=False, use_fp16=False):
-    assert device_id >= 0, 'WaveGlow can only on GPU'
+def import_torch(device_id=-1, verbose=False, use_fp16=False, enable_benchmark=True, reduce_thread=False):
+    # assert device_id >= 0, 'WaveGlow can only on GPU'
     os.environ['CUDA_VISIBLE_DEVICES'] = str(device_id)
     import torch
-    torch.backends.cudnn.benchmark = True
+    if enable_benchmark:
+        torch.backends.cudnn.benchmark = True
+    if reduce_thread:
+        torch.set_num_threads(1)
     return torch
+
+def import_mxnet(device_id=-1, verbose=False, use_fp16=False):
+    # assert device_id >= 0, 'MXNet can only on GPU'
+    os.environ['CUDA_VISIBLE_DEVICES'] = str(device_id)
+    import mxnet
+    return mxnet
+
+def auto_gen_bind_addr():
+    # Get the location for tmp file for sockets
+    try:
+        tmp_dir = os.environ['ZEROMQ_SOCK_TMP_DIR']
+        if not os.path.exists(tmp_dir):
+            raise ValueError('This directory for sockets ({}) does not seems to exist.'.format(tmp_dir))
+        tmp_dir = os.path.join(tmp_dir, str(uuid.uuid1())[:8])
+    except KeyError:
+        tmp_dir = '*'
+    return 'ipc://{}'.format(tmp_dir)
 
 def auto_bind(socket):
     if os.name == 'nt':  # for Windows

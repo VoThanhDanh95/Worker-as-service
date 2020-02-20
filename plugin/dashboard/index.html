@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>tts-as-service Dashboard</title>
+    <title>Service Dashboard</title>
 
     <!-- Bootstrap -->
     <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.3.1/css/all.css"
@@ -16,7 +16,7 @@
 <body class="bg-dark">
 <div id="mrc-ui">
     <nav class="navbar navbar-dark bg-dark">
-        <a class="navbar-brand" href="#">AILab TTS-as-service</a>
+        <a class="navbar-brand" href="#">Service info</a>
         <form class="form-inline" role="search">
             <div class="input-group">
                 <div class="input-group-prepend">
@@ -28,12 +28,11 @@
     </nav>
 
     <div class="container-fluid mt-0 p-4">
-
         <div class="row p-0 m-0">
-            <div class="col-sm-4">
+            <div class="col-sm-5">
                 <div class="card-deck">
                     <div class="card text-center text-white bg-dark mb-1">
-                        <h5 class="card-header">Service info</h5>
+                        <h5 class="card-header">Common info</h5>
                     </div>
                 </div>
                 <div class="card-deck">
@@ -52,67 +51,11 @@
                         </div>
                     </div>
                 </div>
-                <div class="card-deck">
-                    <div class="card text-center mb-1 bg-dark text-light">
-                        <h5 class="card-header">Requests in last 60 mins</h5>
-                        <div class="card-body">
-                            <chartjs-line 
-                                            :labels="histReqLabels(true)"
-                                            :data="histReqValues(true)"
-                                            :datalabel="'Req'"
-                                            :bordercolor="'#e83e8c'"
-                                            :height="120"
-                                            :bind="true"></chartjs-line>
-                        </div>
-                    </div>
-                </div>
-                <div class="card-deck">
-                    <div class="card text-center mb-1 bg-dark text-light">
-                        <h5 class="card-header">Requests in last 60 mins</h5>
-                        <div class="card-body">
-                            <chartjs-line
-                                            :labels="histResLabels(true)"
-                                            :data="histResValues(true)"
-                                            :datalabel="'Res'"
-                                            :bordercolor="'#fd7e14'"
-                                            :height="120"
-                                            :bind="true"></chartjs-line>
-                        </div>
-                    </div>
-                </div>
-                <!-- <div class="card-deck">
-                    <div class="card text-center mb-1 bg-dark text-light">
-                        <h5 class="card-header">Requests in last 12 hours</h5>
-                        <div class="card-body">
-                            <chartjs-line :labels="histReqLabels(true)"
-                                            :data="histReqValues(true)"
-                                            :datalabel="''"
-                                            :fill="true"
-                                            :backgroundcolor="'#fd7e1445'"
-                                            :bordercolor="'#fd7e14'"
-                                            :height="150"
-                                            :bind="true"></chartjs-line>
-                        </div>
-                    </div>
-                    <div class="card text-center mb-1 bg-dark text-light">
-                        <h5 class="card-header">Response in last 12 hours</h5>
-                        <div class="card-body">
-                            <chartjs-line :labels="histResLabels(true)"
-                                            :data="histResValues(true)"
-                                            :datalabel="''"
-                                            :fill="true"
-                                            :backgroundcolor="'#fd7e1445'"
-                                            :bordercolor="'#fd7e14'"
-                                            :height="150"
-                                            :bind="true"></chartjs-line>
-                        </div>
-                    </div>
-                </div> -->
             </div>
-            <div class="col-sm-3">
+            <div class="col-sm">
                 <div class="card-deck">
                     <div class="card text-center text-white bg-dark mb-1">
-                        <h5 class="card-header">Tacotron workers</h5>
+                        <h5 class="card-header">Throughput Info</h5>
                     </div>
                 </div>
                 <div class="card-deck">
@@ -131,79 +74,43 @@
                         </div>
                     </div>
                 </div>
-                <div class="card-deck">
-                    <div class="card text-center mb-1 bg-dark text-light">
-                        <h5 class="card-header">Tacotron Util in last 60 minutes</h5>
-                        <div class="card-body">
-                            <chartjs-line :labels="histTacoLabels(true)"
-                                            :data="histTacoValues(true)"
-                                            :datalabel="''"
-                                            :bordercolor="'#e83e8c'"
-                                            :height="150"
-                                            :bind="true"></chartjs-line>
-                        </div>
-                    </div>
-                </div>
-                <!-- <div class="card-deck">
-                    <div class="card text-center mb-1 bg-dark text-light">
-                        <h5 class="card-header">Tacotron Util in last 12 hours</h5>
-                        <div class="card-body">
-                            <chartjs-line :labels="histTacoLabels(true)"
-                                            :data="histTacoValues(true)"
-                                            :datalabel="''"
-                                            :fill="true"
-                                            :backgroundcolor="'#fd7e1445'"
-                                            :bordercolor="'#fd7e14'"
-                                            :height="150"
-                                            :bind="true"></chartjs-line>
-                        </div>
-                    </div>
-                </div> -->
             </div>
-            <div class="col-sm-5">
+        </div>
+        <div class="row p-0 m-0">
+            <div class="col-sm">
                 <div class="card-deck">
-                    <div class="card text-center text-white bg-dark mb-1">
-                        <h5 class="card-header">WaveGlow workers</h5>
-                    </div>
-                </div>
-                <div class="card-deck">
-                    <div class="card text-center text-white bg-success mb-1 " v-for="tt in waveglow_deck">
-                        <h5 class="card-header">{{tt_text}}</h5>
-                        <div class="card-body">
-                            <p class="card-text">{{tt_value}}</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="card-deck">
-                    <div class="card text-center text-white bg-secondary mb-1" v-for="tt in waveglow_deck_second">
-                        <h5 class="card-header">{{tt_text}}</h5>
-                        <div class="card-body">
-                            <p class="card-text card-text-sm">{{tt_value}}</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="card-deck">
-                    <div class="card text-center text-white bg-secondary mb-1" v-for="tt in waveglow_decks_queues">
-                        <h5 class="card-header">{{tt_text}}</h5>
-                        <div class="card-body">
-                            <p class="card-text card-text-sm">{{tt_value}}</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="card-deck">
-                    <div class="card text-center text-white bg-secondary mb-1" v-for="tt in waveglow_decks_queues_stat">
-                        <h5 class="card-header">{{tt_text}}</h5>
-                        <div class="card-body">
-                            <p class="card-text card-text-sm">{{tt_value}}</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="card-deck">
+
                     <div class="card text-center mb-1 bg-dark text-light">
-                        <h5 class="card-header">Waveglow Util in last 60 minutes</h5>
+                        <h5 class="card-header">Requests in last 60 mins</h5>
                         <div class="card-body">
-                            <chartjs-line :labels="histWaveLabels(true)"
-                                            :data="histWaveValues(true)"
+                            <chartjs-line 
+                                            :labels="histReqLabels(true)"
+                                            :data="histReqValues(true)"
+                                            :datalabel="'Req'"
+                                            :bordercolor="'#e83e8c'"
+                                            :height="120"
+                                            :bind="true"></chartjs-line>
+                        </div>
+                    </div>
+
+                    <div class="card text-center mb-1 bg-dark text-light">
+                        <h5 class="card-header">Responses in last 60 mins</h5>
+                        <div class="card-body">
+                            <chartjs-line
+                                            :labels="histResLabels(true)"
+                                            :data="histResValues(true)"
+                                            :datalabel="'Res'"
+                                            :bordercolor="'#fd7e14'"
+                                            :height="120"
+                                            :bind="true"></chartjs-line>
+                        </div>
+                    </div>
+
+                    <div class="card text-center mb-1 bg-dark text-light">
+                        <h5 class="card-header">Util in last 60 minutes</h5>
+                        <div class="card-body">
+                            <chartjs-line :labels="histTacoLabels(true)"
+                                            :data="histTacoValues(true)"
                                             :datalabel="''"
                                             :bordercolor="'#e83e8c'"
                                             :height="150"
@@ -211,21 +118,6 @@
                         </div>
                     </div>
                 </div>
-                <!-- <div class="card-deck">
-                    <div class="card text-center mb-1 bg-dark text-light">
-                        <h5 class="card-header">Waveglow Util in last 12 hours</h5>
-                        <div class="card-body">
-                            <chartjs-line :labels="histWaveLabels(true)"
-                                            :data="histWaveValues(true)"
-                                            :datalabel="''"
-                                            :fill="true"
-                                            :backgroundcolor="'#fd7e1445'"
-                                            :bordercolor="'#fd7e14'"
-                                            :height="150"
-                                            :bind="true"></chartjs-line>
-                        </div>
-                    </div>
-                </div> -->
             </div>
         </div>
     </div>

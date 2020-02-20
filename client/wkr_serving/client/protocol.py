@@ -4,7 +4,7 @@ import numpy as np
 import zmq
 from zmq.utils import jsonapi
 
-__all__ = ['ServerCmd', 
+__all__ = ['ServerCmd', 'ProcessingError', 
            'send_to_next', 'recv_from_prev',
            'to_bytes', 'to_str', 
            'send_object', 'recv_object', 'send_ndarray', 'decode_ndarray', 'decode_object', 'send_to_next_raw']
@@ -15,10 +15,19 @@ class ServerCmd:
     restart_client = b'RESTART_CLIENT'
     show_config = b'SHOW_CONFIG'
     switch_server = b'SWITCH'
+    exception = b'EXCEPTION'
 
     @staticmethod
     def is_valid(cmd):
         return any(not k.startswith('__') and v == cmd for k, v in vars(ServerCmd).items())
+
+class ProcessingError(Exception):
+    "Raised when eception happend on server side"
+    def __init__(self, msg, client_id, req_id):
+        super(ProcessingError, self).__init__(msg)
+        self.client_id = client_id
+        self.req_id = req_id
+        self.raw_msg = msg
 
 def send_to_next(protocol, client, job_id, msg, dst, flags=0):
     assert protocol in ['obj', 'numpy'], "{} is an invalid transfer protocol, must be 'obj' or 'numpy'".format(protocol)
@@ -49,6 +58,8 @@ def send_ndarray(dst, client, job_id, array, flags=0, copy=True, track=False):
 def recv_ndarray(src):
     msg = src.recv_multipart()
     client, req_id, msg, msg_info = msg
+    if msg_info == ServerCmd.exception:
+        raise ProcessingError(to_str(msg), to_str(client), to_str(req_id))
     arr_info, arr_val = jsonapi.loads(msg_info), msg
     array = decode_ndarray(arr_val, arr_info)
     return to_str(client), to_str(req_id), array, arr_info
@@ -68,6 +79,8 @@ def send_object(dst, client, job_id, obj, flags=0, copy=True, track=False, proto
 def recv_object(src):
     msg = src.recv_multipart()
     client, req_id, msg, msg_info = msg
+    if msg_info == ServerCmd.exception:
+        raise ProcessingError(to_str(msg), to_str(client), to_str(req_id))
     obj_info, obj_buffer = jsonapi.loads(msg_info), msg
     obj = decode_object(obj_buffer, obj_info)
     return to_str(client), to_str(req_id), obj, obj_info

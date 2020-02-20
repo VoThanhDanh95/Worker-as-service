@@ -32,12 +32,20 @@ __all__ = ['__version__', 'WKRServer', 'WKRHardWorker']
 __version__ = '1.0.0-a'
 
 class WKRServer(threading.Thread):
-    def __init__(self, args, hardprocesser=WKRHardWorker):
+    def __init__(self, args, hardprocesser=None, httpprocessor=None):
         super().__init__()
         
+        if hardprocesser is None:
+            hardprocesser = WKRHardWorker
+
+        if httpprocessor is None:
+            httpprocessor = BertHTTPProxy
+
         self.hardprocessor_skeleton = hardprocesser
         if not issubclass(self.hardprocessor_skeleton, WKRHardWorker):
             raise AssertionError('hardprocesser must inherit from class WKRHardWorker')
+
+        self.httpprocessor_skeleton = httpprocessor
 
         self.model_dir = args.model_dir
 
@@ -46,7 +54,7 @@ class WKRServer(threading.Thread):
         self.gpu_memory_fraction = args.gpu_memory_fraction
         self.all_cpu = args.cpu
 
-        self.num_concurrent_postsocket = max(8, args.num_worker * 2)
+        self.num_concurrent_postsocket = min(8, args.num_worker * 2)
         self.batch_size = args.batch_size
 
         self.total_concurrent_socket = self.num_concurrent_postsocket
@@ -114,8 +122,11 @@ class WKRServer(threading.Thread):
     def _run(self, _, frontend, sink, *backend_socks):
 
         def push_new_job(client, req_id, msg_raw, msg_info_raw):
+            # start = time.time()
             _sock = rand_backend_socket
             send_to_next_raw(client, req_id, msg_raw, msg_info_raw, _sock)
+            # end = time.time()
+            # self.logger.warning("Push to worker: {}".format(end-start))
 
         # bind all sockets
         self.logger.info('bind all sockets')
@@ -145,7 +156,7 @@ class WKRServer(threading.Thread):
         # start the http-service process
         if self.args.http_port:
             self.logger.info('start http proxy')
-            proc_proxy = BertHTTPProxy(self.args)
+            proc_proxy = self.httpprocessor_skeleton(self.args)
             self.processes.append(proc_proxy)
             proc_proxy.start()
 
@@ -165,8 +176,10 @@ class WKRServer(threading.Thread):
                 # client, req_id, msg, msg_info = recv_from_prev(self.transfer_protocol, frontend)
                 # request = [client, msg, req_id, msg_info]
             except (ValueError, AssertionError):
-                self.logger.error('received a wrongly-formatted request (expected 4 frames, got %d)' % len(request))
+                exception_msg = 'received a wrongly-formatted request (expected 4 frames, got %d)' % len(request)
+                self.logger.error(exception_msg)
                 self.logger.error('\n'.join('field %d: %s' % (idx, k) for idx, k in enumerate(request)), exc_info=True)
+                sink.send_multipart([client, ServerCmd.exception, to_bytes(exception_msg), to_bytes(req_id)])
             else:
                 server_status.update(request)
                 if msg == ServerCmd.terminate:

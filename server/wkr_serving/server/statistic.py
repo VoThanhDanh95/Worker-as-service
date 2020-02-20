@@ -32,9 +32,12 @@ class ServerStatistic:
         self._client_last_active_time = defaultdict(float)
         self._num_data_req = 0
         self._num_sys_req = 0
+        self._num_except_req = 0
         self._num_total_seq = 0
         self._last_req_time = time.time()
         self._last_two_req_interval = []
+        self._last_rps_total = []
+        self._last_rps_time = time.time()
         self._num_last_two_req = 200
         self._ignored_first = False
 
@@ -46,12 +49,24 @@ class ServerStatistic:
             client, msg, req_id, msg_len = request
             self._hist_client[client] += 1
             if ServerCmd.is_valid(msg):
-                self._num_sys_req += 1
+                if msg == ServerCmd.exception:
+                    self._num_except_req += 1
+                else:
+                    self._num_sys_req += 1
                 # do not count for system request, as they are mainly for heartbeats
             else:
                 self._num_total_seq += 1
                 self._num_data_req += 1
                 tmp = time.time()
+
+                # print(tmp, self._last_rps_time, tmp-self._last_rps_time, '\n', self._last_rps_total)
+
+                if tmp-self._last_rps_time > 2:
+                    self._last_rps_total.append(self._num_total_seq)
+                    self._last_rps_time = tmp
+                    if len(self._last_rps_total) > self._num_last_two_req:
+                        self._last_rps_total.pop(0)
+
                 self._client_last_active_time[client] = tmp
                 self._last_two_req_interval.append(tmp - self._last_req_time)
                 if len(self._last_two_req_interval) > self._num_last_two_req:
@@ -76,9 +91,9 @@ class ServerStatistic:
         def get_min_max_avg2(name, stat):
             if len(stat) > 0:
                 return {
-                    'avg_%s' % name: int(np.median(stat)),
-                    'min_%s' % name: int(np.min(stat)),
-                    'max_%s' % name: int(np.max(stat)),
+                    'avg_%s' % name: np.mean(stat),
+                    'min_%s' % name: np.min(stat),
+                    'max_%s' % name: np.max(stat),
                 }
             else:
                 return {}
@@ -88,16 +103,33 @@ class ServerStatistic:
             now = time.perf_counter()
             return sum(1 for v in self._client_last_active_time.values() if (now - v) < interval)
 
+        # parts = [{
+        #     'num_data_request': self._num_data_req,
+        #     'num_total_seq': self._num_total_seq,
+        #     'num_sys_request': self._num_sys_req,
+        #     'num_total_request': self._num_data_req + self._num_sys_req,
+        #     'num_total_client': len(self._hist_client),
+        #     'num_active_client': get_num_active_client()},
+        #     get_min_max_avg('request_per_client', self._hist_client.values()),
+        #     get_min_max_avg2('last_two_interval', self._last_two_req_interval),
+        #     get_min_max_avg2('request_per_second', [1. / v for v in self._last_two_req_interval]),
+        # ]
+
+        rps = np.array(self._last_rps_total)
+        rps = (rps[1:]-rps[:-1])/2
+        rps = rps[rps>0]
+        
         parts = [{
             'num_data_request': self._num_data_req,
             'num_total_seq': self._num_total_seq,
             'num_sys_request': self._num_sys_req,
+            'num_exception': self._num_except_req,
             'num_total_request': self._num_data_req + self._num_sys_req,
             'num_total_client': len(self._hist_client),
             'num_active_client': get_num_active_client()},
             get_min_max_avg('request_per_client', self._hist_client.values()),
             get_min_max_avg2('last_two_interval', self._last_two_req_interval),
-            get_min_max_avg2('request_per_second', [1. / v for v in self._last_two_req_interval]),
+            get_min_max_avg2('request_per_second', rps),
         ]
 
         return {k: v for d in parts for k, v in d.items()}
