@@ -14,7 +14,7 @@ from termcolor import colored
 __all__ = ['set_logger', 'get_args_parser',
            'check_tf_version', 'auto_bind', 'import_tf', 'import_torch', 'import_mxnet']
 
-def set_logger(context, logger_dir=None, verbose=False):
+def set_logger(context, logger_dir=None, verbose=False, max_bytes=10*1024*1024, backup_count=10):
     if os.name == 'nt':  # for Windows
         return NTLogger(context, verbose)
 
@@ -31,8 +31,8 @@ def set_logger(context, logger_dir=None, verbose=False):
         '%y-%m-%d %H:%M:%S')
     
     if logger_dir:
-        file_name = os.path.join(logger_dir, 'TTSServer_{:%Y-%m-%d}.log'.format(datetime.now()))
-        handler = RotatingFileHandler(file_name, mode='a', maxBytes=10*1024*1024, backupCount=10, encoding=None, delay=0)
+        file_name = os.path.join(logger_dir, 'WKRServer_{:%Y-%m-%d}.log'.format(datetime.now()))
+        handler = RotatingFileHandler(file_name, mode='a', maxBytes=max_bytes, backupCount=backup_count, encoding=None, delay=0)
     else:
         handler = logging.StreamHandler()
 

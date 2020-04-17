@@ -8,6 +8,13 @@ import time
 from PIL import Image
 import urllib.request as urllib_request
 from io import BytesIO
+import json
+
+class MaxFileSizeExeeded(Exception):
+    pass
+
+class NotSupportedInputFile(Exception):
+    pass
 
 def download_img_file(url, retry=50, retry_gap=0.1, proxy=None):
 #     export http_proxy=http://10.30.80.254:81
@@ -29,6 +36,17 @@ def download_img_file(url, retry=50, retry_gap=0.1, proxy=None):
             return download_img_file(url, retry=retry-1)
         else:
             raise e
+
+def check_request_size(request, max_size = 5 * 1024 * 1024):
+    if request.content_length > max_size:
+        raise MaxFileSizeExeeded("Input file size too large, limit is {:0.2f}MB".format(max_size/(1024**2)))
+
+def convert_bytes_to_pil_image(img_bytes):
+    try:
+        img = Image.open(BytesIO(img_bytes)).convert("RGB")
+        return img
+    except:
+        raise NotSupportedInputFile("Wrong input file type, only accept image")
 
 class BertHTTPProxy(Process):
     def __init__(self, args):
@@ -97,7 +115,6 @@ class BertHTTPProxy(Process):
                     })
                 else:
                     raise Exception('wrong request parameter, must contain "img_bytes"')
-
             except Exception as e:
                 logger.error('error when handling HTTP request', exc_info=True)
                 return jsonify({
@@ -105,6 +122,46 @@ class BertHTTPProxy(Process):
                         "error_message": str(e),
                         "data": []
                     })
+
+        @app.route('/v1/encode_img_bytes', methods=['POST'])
+        def v1_encode_query_img_bytes():
+            try:
+                logger.info('new request from %s' % request.remote_addr)
+                check_request_size(request)
+                if 'img_bytes' in request.files:
+                    img_bytes = request.files['img_bytes'].read()
+                    img = convert_bytes_to_pil_image(img_bytes)
+                    final_res = bc.encode(img)
+                    return jsonify({
+                        "error_code": 0,
+                        "error_message": "Successful.",
+                        "data": final_res
+                    }), 200
+                else:
+                    return jsonify({
+                        "error_code": 400,
+                        "error_message": "Wrong request parameter, must contain \"img_bytes\"",
+                        "data": []
+                    }), 400
+            except NotSupportedInputFile as e:
+                return jsonify({
+                    "error_code": 400,
+                    "error_message": str(e),
+                    "data": []
+                }), 400
+            except MaxFileSizeExeeded as e:
+                return jsonify({
+                    "error_code": 413,
+                    "error_message": str(e),
+                    "data": []
+                }), 413
+            except Exception as e:
+                logger.error('error when handling HTTP request', exc_info=True)
+                return jsonify({
+                    "error_code": 500,
+                    "error_message": "Internal server error",
+                    "data": []
+                }), 500
 
         @app.route('/encode_img_url', methods=['POST'])
         # @as_json
@@ -126,6 +183,29 @@ class BertHTTPProxy(Process):
                     })
                 else:
                     raise Exception('wrong request parameter, must contain "img_url"')
+            except Exception as e:
+                logger.error('error when handling HTTP request', exc_info=True)
+                return jsonify({
+                        "error_code": 1,
+                        "error_message": str(e),
+                        "data": []
+                    })
+
+        @app.route('/encode_json', methods=['POST'])
+        def encode_query_json():
+            # curl -H "Content-Type: application/json" \
+            # -X POST \
+            # -d '{"data1":"data1","data2":"data2"}' \
+            # http://localhost:3000/encode_json
+            try:
+                # target_json = dict(request.json)
+                target_json = json.loads(request.data)
+                final_res = bc.encode(target_json)
+                return jsonify({
+                    "error_code": 0,
+                    "error_message": "Success.",
+                    "data": final_res
+                })
             except Exception as e:
                 logger.error('error when handling HTTP request', exc_info=True)
                 return jsonify({
