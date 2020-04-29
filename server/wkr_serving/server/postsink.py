@@ -75,10 +75,27 @@ class WKRSink(Process):
         # Windows does not support logger in MP environment, thus get a new logger
         # inside the process for better compability
         logger = set_logger(colored('SINK', 'green'), logger_dir=self.logdir, verbose=self.verbose)
+        logger_error = set_logger(colored('SINK-ERROR', 'red'), logger_dir=self.logdir, verbose=self.verbose, error_log=True)
         logger.info('ready')
         self.is_ready.set()
 
         sink_status = ServerStatistic()
+        latency_status = defaultdict(lambda: {'start': -1, 'end': -1})
+
+        def check_status(sink_status, latency_status):
+
+            result = []
+            removed_keys = []
+            for k, status in latency_status.items():
+                if status['start'] != -1 and status['end'] != -1:
+                    latency = (status['end']-status['start'])*1000
+                    result.append(latency)
+                    removed_keys.append(k)
+            for k in removed_keys:
+                latency_status.pop(k)
+            for res in result:
+                sink_status.update_key('latency', res)
+            # print('\n',dict(latency_status), '\n', result, '\n')
 
         while not self.exit_flag.is_set():
             try:
@@ -86,38 +103,56 @@ class WKRSink(Process):
 
                 if socks.get(receiver) == zmq.POLLIN:
                     client, req_id, msg, msg_info = recv_from_prev_raw(receiver)
-                    if msg_info == ServerCmd.exception:
-                        # exception
-                        logger.error("exception processing {}#{}".format(client, req_id))
-                        sink_status.update([
-                            to_bytes(client), 
-                            ServerCmd.exception, 
-                            to_bytes(req_id), 
-                            b'1'
-                        ])
-                        
-                    else:
-                        # embeding
-                        logger.info("collected {}#{}".format(client, req_id))
-                        sink_status.update([
-                            to_bytes(client), 
-                            b'<new_request>', 
-                            to_bytes(req_id), 
-                            b'1'
-                        ])
 
-                    send_to_next_raw(client, req_id, msg, msg_info, sender)
-                    self.current_jobnum -= 1
-                    self.total_processed += 1
-                    logger.info('send back\tjob id: {}#{} \tleft: {}'.format(client, req_id, self.current_jobnum))
+                    if msg_info == ServerCmd.statistic:
+                        # record statistic value
+                        stat_info = jsonapi.loads(msg)
+                        for k, v in stat_info.items():
+                            sink_status.update_key(k, v)
+                    else:
+                        # main processing flow
+                        if msg_info == ServerCmd.exception:
+                            # exception
+                            logger_error.error("exception processing {}#{}\n{}".format(client, req_id, msg))
+                            sink_status.update([
+                                to_bytes(client), 
+                                ServerCmd.exception, 
+                                to_bytes(req_id), 
+                                b'1'
+                            ])
+                        else:
+                            # embeding
+                            logger.info("collected {}#{}".format(client, req_id))
+                            sink_status.update([
+                                to_bytes(client), 
+                                b'<new_request>', 
+                                to_bytes(req_id), 
+                                b'1'
+                            ])
+                        send_to_next_raw(client, req_id, msg, msg_info, sender)
+
+                        # update latency
+                        job_id = to_str(client) + '#' + to_str(req_id)
+                        latency_status[job_id]['end'] = time.time()
+                        check_status(sink_status, latency_status)
+
+                        self.current_jobnum -= 1
+                        self.total_processed += 1
+                        logger.info('send back\tjob id: {}#{} \tleft: {}'.format(client, req_id, self.current_jobnum))
 
                 if socks.get(frontend) == zmq.POLLIN:
                     request = frontend.recv_multipart()
                     client_addr, msg_type, msg_info, req_id = request
                     if msg_type == ServerCmd.new_job:
-                        job_id = client_addr + b'#' + req_id
+                        job_id = to_str(client_addr) + '#' + to_str(req_id)
                         self.current_jobnum += 1
                         self.maximum_jobnum = self.current_jobnum if self.current_jobnum > self.maximum_jobnum else self.maximum_jobnum
+                        job_info = jsonapi.loads(msg_info)
+
+                        # update latency
+                        latency_status[job_id]['start'] = job_info['time']
+                        check_status(sink_status, latency_status)
+
                         logger.info('registed job\tjob id: {}\tleft: {}'.format(job_id, self.current_jobnum))
 
                     elif msg_type == ServerCmd.show_config:
@@ -138,7 +173,7 @@ class WKRSink(Process):
                     elif msg_type == ServerCmd.exception:
                         # not yet registed to the server
                         send_to_next_raw(client_addr, req_id, msg_info, ServerCmd.exception, sender)
-                        logger.error("exception received {}#{}".format(client_addr, req_id))
+                        logger_error.error("exception received {}#{}\{}".format(client_addr, req_id, msg_info))
 
             except Exception as e:
-                logger.error('{}'.format(e), exc_info=True)
+                logger_error.error('{}'.format(e), exc_info=True)

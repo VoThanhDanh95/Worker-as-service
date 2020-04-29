@@ -50,7 +50,10 @@ class WKRWorker(Process):
         raise NotImplementedError('WKRWorker:off_model() not implemented')
 
     def run(self):
-        logger = set_logger(colored('WORKER-{}-{:03d}'.format(self.ip, self.idx), 'green'), logger_dir=self.logdir)
+        # logger = set_logger(colored('WORKER-{}-{:03d}'.format(self.ip, self.idx), 'green'), logger_dir=self.logdir)
+
+        # logger = set_logger(colored('WORKER-{}-{:03d}'.format(self.ip, self.idx), 'green'), logger_dir=self.logdir)
+        logger = LoggerSeperate('WORKER-{}-{:03d}'.format(self.ip, self.idx), 'green', logger_dir=self.logdir)
 
         model = self.get_model(self.ip, self.port, self.port_out)
 

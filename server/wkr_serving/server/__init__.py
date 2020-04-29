@@ -204,7 +204,7 @@ class WKRServer(threading.Thread):
                                      (str(req_id), client))
 
                     # regist job
-                    sink.send_multipart([client, ServerCmd.new_job, jsonapi.dumps({'job_parts': '1', 'split_info': {}}), to_bytes(req_id)])
+                    sink.send_multipart([client, ServerCmd.new_job, jsonapi.dumps({'job_parts': '1', 'split_info': {}, 'time': time.time()}), to_bytes(req_id)])
 
                     # pick random socket
                     rand_backend_socket = random.choice([b for b in backend_socks if b != rand_backend_socket])

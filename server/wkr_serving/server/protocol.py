@@ -18,9 +18,10 @@ class ServerCmd:
     getout_socket = b'GETOUT_SOCKET'
     data_embed = b'EMBEDDINGS'
     exception = b'EXCEPTION'
+    statistic = b'STATISTIC'
 
     @staticmethod
-    def is_valid(cmd):
+    def is_valid(cmd):  
         return any(not k.startswith('__') and v == cmd for k, v in vars(ServerCmd).items())
 
 class ProcessingError(Exception):

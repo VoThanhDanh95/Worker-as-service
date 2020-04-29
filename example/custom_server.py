@@ -7,14 +7,45 @@ class Worker(WKRHardWorker):
     def get_env(self, device_id, tmp_dir):
         tf = import_tf(device_id=device_id)
         import numpy as np
-        return [tf, np]
+
+        info_logger = self.new_logger()
+        error_logger = self.new_logger(error_logger=True)
+
+        return [tf, np, info_logger, error_logger]
     
     def get_model(self, envs, model_dir, model_name, tmp_dir):
-        tf, np = envs
-        return np
+        tf, np, info_logger, error_logger = envs
+
+        info_logger.info("Begin load model")
+        try:
+            # load model
+            pass
+        except Exception as e:
+            error_logger.error("Load model error")
+
+        return model, info_logger, error_logger
     
     def predict(self, model, input):
-        return input
+        model, info_logger, error_logger = model
+        
+        info_logger.info("Processing input: {}".format(input))
+
+        start_process = time.time()
+        # preprocess
+        done_preprocess = time.time()
+        # predict
+        done_predict = time.time()
+
+        info_logger.info("DONE input: {}".format(input))
+
+        # log statistic number
+        self.record_statistic({
+            'preprocess': (done_preprocess-start_process)*1000/len(input),
+            'predict': (done_predict-done_preprocess)*1000/len(input),
+            'batchsize': len(input)
+        })
+
+        return result
 
 if __name__ == "__main__":
 

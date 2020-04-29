@@ -13,9 +13,9 @@ import zmq
 from termcolor import colored
 from zmq.utils import jsonapi
 
-__all__ = ['set_logger', 'get_args_parser', 'get_status_parser', 'get_switch_parser', 'get_shutdown_parser']
+__all__ = ['set_logger', 'LoggerSeperate', 'get_args_parser', 'get_status_parser', 'get_switch_parser', 'get_shutdown_parser']
 
-def set_logger(context, logger_dir=None, verbose=False):
+def set_logger(context, logger_dir=None, verbose=False, error_log=False):
     if os.name == 'nt':  # for Windows
         return NTLogger(context, verbose)
 
@@ -32,8 +32,11 @@ def set_logger(context, logger_dir=None, verbose=False):
         '%y-%m-%d %H:%M:%S')
     
     if logger_dir:
-        file_name = os.path.join(logger_dir, 'WKRClient_{:%Y-%m-%d}.log'.format(datetime.now()))
-        handler = RotatingFileHandler(file_name, mode='a', maxBytes=10*1024*1024, backupCount=10, encoding=None, delay=0)
+        file_name = os.path.join(logger_dir, 'WKRClient_{:%Y-%m-%d}.{}'.format(datetime.now(), "err" if error_log else "log"))
+
+        print(file_name)
+
+        handler = RotatingFileHandler(file_name, mode='a', maxBytes=500*1024*1024, backupCount=10, encoding=None, delay=0)
     else:
         handler = logging.StreamHandler()
 
@@ -43,6 +46,22 @@ def set_logger(context, logger_dir=None, verbose=False):
     logger.addHandler(handler)
     return logger
 
+class LoggerSeperate():
+    def __init__(self, name, color, logger_dir=None, verbose=False):
+        self.logger_info = set_logger(colored(name, color), logger_dir=logger_dir, verbose=verbose)
+        self.logger_erro = set_logger(colored('{}-ERROR'.format(name), color), logger_dir=logger_dir, verbose=verbose, error_log=True)
+
+    def info(self, msg, **kwargs):
+        self.logger_info.info(msg, **kwargs)
+
+    def debug(self, msg, **kwargs):
+        self.logger_info.debug(msg, **kwargs)
+
+    def error(self, msg, **kwargs):
+        self.logger_erro.error(msg, **kwargs)
+
+    def warning(self, msg, **kwargs):
+        self.logger_info.warning(msg, **kwargs)
 
 class NTLogger:
     def __init__(self, context, verbose):

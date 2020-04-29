@@ -5,6 +5,7 @@ wkr-serving-start \
 -model_name=frozen_inference_graph.pb \
 -port_in=8070 \
 -port_out=8072 \
+-http_port=8074 \
 -http_stat_dashboard=/home/zdeploy/AILab/duydv2/worker-as-service/plugin/dashboard \
 -num_worker 2 \
 -batch_size 1 \

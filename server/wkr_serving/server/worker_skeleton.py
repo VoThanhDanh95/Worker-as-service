@@ -95,6 +95,11 @@ class WKRWorkerSkeleton(Process):
         client, req_id, msg, msg_info = recv_from_prev(self.transfer_proto, sock)
         return client, req_id, msg
 
+    def new_logger(self, error_logger=False):
+        name = '%s-%d' % (self.name, self.worker_id) + ('-ERROR' if error_logger else '')
+        color = 'red' if error_logger else self.color
+        return set_logger(colored(name, color), logger_dir=self.logdir, verbose=self.verbose, error_log=error_logger)
+
     def run(self):
         self._run()
 
@@ -106,7 +111,7 @@ class WKRWorkerSkeleton(Process):
     def _run(self, sink_embed, *receivers):
         # Windows does not support logger in MP environment, thus get a new logger
         # inside the process for better compatibility
-        logger = set_logger(colored('%s-%d' % (self.name, self.worker_id), self.color), logger_dir=self.logdir, verbose=self.verbose)
+        logger = self.new_logger()
 
         logger.info('use device %s, load graph from %s/%s' %
                     ('cpu' if self.device_id < 0 else ('gpu: %d' % self.device_id), self.model_dir, self.model_name))
@@ -119,6 +124,14 @@ class WKRWorkerSkeleton(Process):
         for sock, addr in zip(receivers, self.worker_address):
             sock.connect(addr)
         sink_embed.connect(self.sink_address)
+
+        def record_statistic(diction):
+            push_dic = {}
+            for k, v in diction.items():
+                push_dic[str(k)] = float(v)
+            send_to_next_raw(to_bytes(''), to_bytes(''), jsonapi.dumps(push_dic), ServerCmd.statistic, sink_embed)
+
+        self.record_statistic = record_statistic
 
         generator = self.input_fn_builder(receivers, input_preprocessor)
         for msg in generator():
@@ -158,7 +171,7 @@ class WKRWorkerSkeleton(Process):
         def gen():
             # Windows does not support logger in MP environment, thus get a new logger
             # inside the process for better compatibility
-            logger = set_logger(colored('%s-%d' % (self.name, self.worker_id), self.color), logger_dir=self.logdir, verbose=self.verbose)
+            logger = self.new_logger()
 
             poller = zmq.Poller()
             for sock in socks:

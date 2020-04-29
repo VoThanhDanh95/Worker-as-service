@@ -46,7 +46,7 @@ def convert_bytes_to_pil_image(img_bytes):
         img = Image.open(BytesIO(img_bytes)).convert("RGB")
         return img
     except:
-        raise NotSupportedInputFile("Wrong input file type, only accept image")
+        raise NotSupportedInputFile("Wrong input file type, only accept jpg or png image")
 
 class BertHTTPProxy(Process):
     def __init__(self, args):
@@ -120,7 +120,7 @@ class BertHTTPProxy(Process):
                 return jsonify({
                         "error_code": 1,
                         "error_message": str(e),
-                        "data": []
+                        "data": {}
                     })
 
         @app.route('/v1/encode_img_bytes', methods=['POST'])
@@ -141,26 +141,26 @@ class BertHTTPProxy(Process):
                     return jsonify({
                         "error_code": 400,
                         "error_message": "Wrong request parameter, must contain \"img_bytes\"",
-                        "data": []
+                        "data": {}
                     }), 400
             except NotSupportedInputFile as e:
                 return jsonify({
                     "error_code": 400,
                     "error_message": str(e),
-                    "data": []
+                    "data": {}
                 }), 400
             except MaxFileSizeExeeded as e:
                 return jsonify({
                     "error_code": 413,
                     "error_message": str(e),
-                    "data": []
+                    "data": {}
                 }), 413
             except Exception as e:
                 logger.error('error when handling HTTP request', exc_info=True)
                 return jsonify({
                     "error_code": 500,
                     "error_message": "Internal server error",
-                    "data": []
+                    "data": {}
                 }), 500
 
         @app.route('/encode_img_url', methods=['POST'])
@@ -188,7 +188,7 @@ class BertHTTPProxy(Process):
                 return jsonify({
                         "error_code": 1,
                         "error_message": str(e),
-                        "data": []
+                        "data": {}
                     })
 
         @app.route('/encode_json', methods=['POST'])
@@ -211,7 +211,7 @@ class BertHTTPProxy(Process):
                 return jsonify({
                         "error_code": 1,
                         "error_message": str(e),
-                        "data": []
+                        "data": {}
                     })
 
         @app.route('/encode', methods=['POST'])
@@ -236,7 +236,7 @@ class BertHTTPProxy(Process):
                 return jsonify({
                         "error_code": 1,
                         "error_message": str(e),
-                        "data": []
+                        "data": {}
                     })
 
         CORS(app, origins=self.args.cors)

@@ -24,8 +24,6 @@ from .protocol import *
 from .http import BertHTTPProxy
 from .zmq_decor import multi_socket
 
-
-
 class ServerStatistic:
     def __init__(self):
         self._hist_client = defaultdict(int)
@@ -38,8 +36,12 @@ class ServerStatistic:
         self._last_two_req_interval = []
         self._last_rps_total = []
         self._last_rps_time = time.time()
-        self._num_last_two_req = 200
+        self._num_last_two_req = 1000
+        self._rps_interval = 3
         self._ignored_first = False
+
+        self._other_statistic = defaultdict(list)
+        self._other_statistic_limit = 100
 
     def update(self, request, ignore_first=False):
 
@@ -61,7 +63,7 @@ class ServerStatistic:
 
                 # print(tmp, self._last_rps_time, tmp-self._last_rps_time, '\n', self._last_rps_total)
 
-                if tmp-self._last_rps_time > 2:
+                if tmp-self._last_rps_time > self._rps_interval:
                     self._last_rps_total.append(self._num_total_seq)
                     self._last_rps_time = tmp
                     if len(self._last_rps_total) > self._num_last_two_req:
@@ -74,29 +76,21 @@ class ServerStatistic:
 
                 self._last_req_time = tmp
 
+    def update_key(self, key, value):
+        self._other_statistic[key].append(float(value))
+        if len(self._other_statistic[key]) > self._other_statistic_limit:
+            self._other_statistic[key].pop(0)
+
+    @property
+    def other_statistic_stat(self):
+        result = {}
+        for key, values in self._other_statistic.items():
+            stat_dict = self.get_min_max_avg2('stat', values)
+            result[key] = stat_dict
+        return result
+
     @property
     def value(self):
-        def get_min_max_avg(name, stat):
-            if len(stat) > 0:
-                return {
-                    'avg_%s' % name: sum(stat)/len(stat),
-                    'min_%s' % name: min(stat),
-                    'max_%s' % name: max(stat),
-                    'num_min_%s' % name: sum(v == min(stat) for v in stat),
-                    'num_max_%s' % name: sum(v == max(stat) for v in stat),
-                }
-            else:
-                return {}
-
-        def get_min_max_avg2(name, stat):
-            if len(stat) > 0:
-                return {
-                    'avg_%s' % name: np.mean(stat),
-                    'min_%s' % name: np.min(stat),
-                    'max_%s' % name: np.max(stat),
-                }
-            else:
-                return {}
 
         def get_num_active_client(interval=180):
             # we count a client active when its last request is within 3 min.
@@ -116,7 +110,7 @@ class ServerStatistic:
         # ]
 
         rps = np.array(self._last_rps_total)
-        rps = (rps[1:]-rps[:-1])/2
+        rps = (rps[1:]-rps[:-1])/self._rps_interval
         rps = rps[rps>0]
         
         parts = [{
@@ -126,10 +120,35 @@ class ServerStatistic:
             'num_exception': self._num_except_req,
             'num_total_request': self._num_data_req + self._num_sys_req,
             'num_total_client': len(self._hist_client),
-            'num_active_client': get_num_active_client()},
-            get_min_max_avg('request_per_client', self._hist_client.values()),
-            get_min_max_avg2('last_two_interval', self._last_two_req_interval),
-            get_min_max_avg2('request_per_second', rps),
+            'num_active_client': get_num_active_client(),
+            'others': self.other_statistic_stat},
+            self.get_min_max_avg('request_per_client', self._hist_client.values()),
+            self.get_min_max_avg2('last_two_interval', self._last_two_req_interval),
+            self.get_min_max_avg2('request_per_second', rps),
         ]
 
         return {k: v for d in parts for k, v in d.items()}
+
+    def get_min_max_avg(self, name, stat):
+        if len(stat) > 0:
+            return {
+                'avg_%s' % name: sum(stat)/len(stat),
+                'min_%s' % name: min(stat),
+                'max_%s' % name: max(stat),
+                'num_min_%s' % name: sum(v == min(stat) for v in stat),
+                'num_max_%s' % name: sum(v == max(stat) for v in stat),
+            }
+        else:
+            return {}
+
+    def get_min_max_avg2(self, name, stat):
+        if len(stat) > 0:
+            return {
+                'avg_%s' % name: np.mean(stat),
+                'min_%s' % name: np.min(stat),
+                'max_%s' % name: np.max(stat),
+                'std_%s' % name: np.std(stat),
+                'med_%s' % name: np.median(stat),
+            }
+        else:
+            return {}
