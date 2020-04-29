@@ -11,7 +11,7 @@ import warnings
 import zmq
 from termcolor import colored
 
-__all__ = ['set_logger', 'get_args_parser',
+__all__ = ['set_logger', 'get_args_parser', 'LoggerSeperate',
            'check_tf_version', 'auto_bind', 'import_tf', 'import_torch', 'import_mxnet']
 
 def set_logger(context, logger_dir=None, verbose=False, error_log=False, max_bytes=500*1024*1024, backup_count=10):
@@ -31,7 +31,7 @@ def set_logger(context, logger_dir=None, verbose=False, error_log=False, max_byt
         '%y-%m-%d %H:%M:%S')
     
     if logger_dir:
-        file_name = os.path.join(logger_dir, 'TTSServer_{:%Y-%m-%d}.{}'.format(datetime.now(), "err" if error_log else "log"))
+        file_name = os.path.join(logger_dir, 'WKRServer_{:%Y-%m-%d}.{}'.format(datetime.now(), "err" if error_log else "log"))
         handler = RotatingFileHandler(file_name, mode='a', maxBytes=max_bytes, backupCount=backup_count, encoding=None, delay=0)
         # handler = RotatingFileHandler(file_name, mode='a', maxBytes=10*1024*1024, backupCount=10, encoding=None, delay=0)
     else:
@@ -42,6 +42,23 @@ def set_logger(context, logger_dir=None, verbose=False, error_log=False, max_byt
     logger.handlers = []
     logger.addHandler(handler)
     return logger
+
+class LoggerSeperate():
+    def __init__(self, name, color, logger_dir=None, verbose=False):
+        self.logger_info = set_logger(colored(name, color), logger_dir=logger_dir, verbose=verbose)
+        self.logger_erro = set_logger(colored('{}-ERROR'.format(name), color), logger_dir=logger_dir, verbose=verbose, error_log=True)
+
+    def info(self, msg, **kwargs):
+        self.logger_info.info(msg, **kwargs)
+
+    def debug(self, msg, **kwargs):
+        self.logger_info.debug(msg, **kwargs)
+
+    def error(self, msg, **kwargs):
+        self.logger_erro.error(msg, **kwargs)
+
+    def warning(self, msg, **kwargs):
+        self.logger_info.warning(msg, **kwargs)
 
 class NTLogger:
     def __init__(self, context, verbose):

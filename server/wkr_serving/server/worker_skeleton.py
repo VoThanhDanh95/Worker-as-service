@@ -95,10 +95,10 @@ class WKRWorkerSkeleton(Process):
         client, req_id, msg, msg_info = recv_from_prev(self.transfer_proto, sock)
         return client, req_id, msg
 
-    def new_logger(self, error_logger=False):
-        name = '%s-%d' % (self.name, self.worker_id) + ('-ERROR' if error_logger else '')
-        color = 'red' if error_logger else self.color
-        return set_logger(colored(name, color), logger_dir=self.logdir, verbose=self.verbose, error_log=error_logger)
+    def new_logger(self):
+        name = '%s-%d' % (self.name, self.worker_id)
+        color = self.color
+        return LoggerSeperate(name, color, logger_dir=self.logdir, verbose=self.verbose)
 
     def run(self):
         self._run()

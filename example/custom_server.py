@@ -8,27 +8,26 @@ class Worker(WKRHardWorker):
         tf = import_tf(device_id=device_id)
         import numpy as np
 
-        info_logger = self.new_logger()
-        error_logger = self.new_logger(error_logger=True)
+        logger = self.new_logger()
 
-        return [tf, np, info_logger, error_logger]
+        return [tf, np, logger]
     
     def get_model(self, envs, model_dir, model_name, tmp_dir):
-        tf, np, info_logger, error_logger = envs
+        tf, np, logger = envs
 
-        info_logger.info("Begin load model")
+        logger.info("Begin load model")
         try:
             # load model
             pass
         except Exception as e:
-            error_logger.error("Load model error")
+            logger.error("Load model error")
 
-        return model, info_logger, error_logger
+        return model, logger
     
     def predict(self, model, input):
-        model, info_logger, error_logger = model
+        model, logger = model
         
-        info_logger.info("Processing input: {}".format(input))
+        logger.info("Processing input: {}".format(input))
 
         start_process = time.time()
         # preprocess
@@ -36,7 +35,7 @@ class Worker(WKRHardWorker):
         # predict
         done_predict = time.time()
 
-        info_logger.info("DONE input: {}".format(input))
+        logger.info("DONE input: {}".format(input))
 
         # log statistic number
         self.record_statistic({
