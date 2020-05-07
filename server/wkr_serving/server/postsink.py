@@ -83,7 +83,6 @@ class WKRSink(Process):
         latency_status = defaultdict(lambda: {'start': -1, 'end': -1})
 
         def check_status(sink_status, latency_status):
-
             result = []
             removed_keys = []
             for k, status in latency_status.items():
