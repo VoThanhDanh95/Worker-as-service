@@ -230,9 +230,11 @@ class WKRClient(object):
                 return func(self, *args, **kwargs)
             except zmq.error.Again as _e:
                 t_e = TimeoutError(
-                    'no response from the server (with "timeout"=%d ms), please check the following:'
-                    'is the server still online? is the network broken? are "port" and "port_out" correct? '
-                    'are you encoding a huge amount of data whereas the timeout is too small for that?' % self.timeout)
+                    '''no response from the server (with "timeout"={} ms), please check the following:
+                    is the server still online? is the network broken? are "port" and "port_out" correct? 
+                    are you encoding a huge amount of data whereas the timeout is too small for that?\nRequest id:{}'''.format(
+                        self.timeout, "{}#{}:{}".format(self.identity, self.request_id, ','.join(self.pending_request))
+                    ))
                 if _py2:
                     raise t_e
                 else:

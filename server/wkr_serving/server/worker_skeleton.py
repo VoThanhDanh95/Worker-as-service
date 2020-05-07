@@ -133,7 +133,7 @@ class WKRWorkerSkeleton(Process):
 
         self.record_statistic = record_statistic
 
-        generator = self.input_fn_builder(receivers, input_preprocessor)
+        generator = self.input_fn_builder(receivers, input_preprocessor, sink_embed)
         for msg in generator():
             client_ids, input_data = msg['client_ids'], msg['input_data']
             try:
@@ -167,7 +167,7 @@ class WKRWorkerSkeleton(Process):
                     cliend, req_id = client_id.split('#')
                     send_to_next_raw(to_bytes(cliend), to_bytes(req_id), to_bytes(exception_msg), ServerCmd.exception, sink_embed)
 
-    def input_fn_builder(self, socks, input_preprocessor):
+    def input_fn_builder(self, socks, input_preprocessor, sink_embed):
         def gen():
             # Windows does not support logger in MP environment, thus get a new logger
             # inside the process for better compatibility
@@ -185,12 +185,25 @@ class WKRWorkerSkeleton(Process):
                 if events:
                     for sock_idx, sock in enumerate(socks):
                         if sock in events:
-                            client, req_id, msg = self.load_raw_msg(sock)
-                            logger.info('new job\tsocket: {}\tclient: {}#{}'.format(sock_idx, client, req_id))
-                            return {
-                                'client_id': client+'#'+req_id,
-                                'client_msg': msg
-                            }
+                            try:
+                                client, req_id, msg = self.load_raw_msg(sock)
+                                logger.info('new job\tsocket: {}\tclient: {}#{}'.format(sock_idx, client, req_id))
+                                return {
+                                    'client_id': client+'#'+req_id,
+                                    'client_msg': msg
+                                }
+                            except DecodeObjectException as e:
+                                # return error to client
+                                client, req_id = e.client, e.req_id
+                                exception_msg = '''
+                                {}
+                                \n
+                                Error while decoding input from client: {}#{}
+                                '''.format(e, to_str(client), to_str(req_id))
+                                send_to_next_raw(to_bytes(client), to_bytes(req_id), to_bytes(exception_msg), ServerCmd.exception, sink_embed)
+                                raise e
+                            except Exception as e:
+                                raise e
                 return None
 
             while not self.exit_flag.is_set():

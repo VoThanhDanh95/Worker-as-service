@@ -5,10 +5,13 @@ import numpy as np
 import zmq
 from zmq.utils import jsonapi
 
-__all__ = ['ServerCmd', 'ProcessingError', 
+__all__ = ['ServerCmd', 'ProcessingError', 'DecodeObjectException',
            'send_to_next', 'recv_from_prev',
            'to_bytes', 'to_str', 
            'send_object', 'recv_object', 'send_ndarray', 'decode_ndarray', 'decode_object', 'send_to_next_raw', 'recv_from_prev_raw']
+
+class DecodeObjectException(Exception):
+    pass    
 
 class ServerCmd:
     terminate = b'TERMINATION'
@@ -91,8 +94,16 @@ def recv_object(src):
     client, req_id, msg, msg_info = msg
     if msg_info == ServerCmd.exception:
         raise ProcessingError(to_str(msg), to_str(client), to_str(req_id))
-    obj_info, obj_buffer = jsonapi.loads(msg_info), msg
-    obj = decode_object(obj_buffer, obj_info)
+    try:
+        obj_info, obj_buffer = jsonapi.loads(msg_info), msg
+        obj = decode_object(obj_buffer, obj_info)
+    except Exception as e:
+        raw_exp_e = str(e)
+        decode_exp = DecodeObjectException(raw_exp_e)
+        decode_exp.client = client
+        decode_exp.req_id = req_id
+        raise decode_exp
+
     return to_str(client), to_str(req_id), obj, obj_info
 
 def decode_object(buffer, info):

@@ -54,7 +54,7 @@ class WKRServer(threading.Thread):
         self.gpu_memory_fraction = args.gpu_memory_fraction
         self.all_cpu = args.cpu
 
-        self.num_concurrent_postsocket = min(8, args.num_worker * 2)
+        self.num_concurrent_postsocket = max(8, args.num_worker * 2)
         self.batch_size = args.batch_size
 
         self.total_concurrent_socket = self.num_concurrent_postsocket
