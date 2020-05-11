@@ -87,7 +87,7 @@ def send_object(dst, client, job_id, obj, flags=0, copy=True, track=False, proto
     end = time.time()
     # print("encode ", end-start)
     obj_info = jsonapi.dumps(dict(protocol=protocol, compress=need_compress))
-    send_to_next_raw(client, job_id, z, obj_info, dst, flags=flags, copy=copy, track=track )
+    send_to_next_raw(client, job_id, z, obj_info, dst, flags=flags, copy=copy, track=track)
 
 def recv_object(src):
     msg = src.recv_multipart()

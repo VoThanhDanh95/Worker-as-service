@@ -5,33 +5,48 @@ import requests
 
 from wkr_serving.client import WKRWorker, WKRDecentralizeCentral
 from wkr_serving.client import WKRClient
+from wkr_serving.client.helper import RedisHandler
 
 class AIModel(WKRWorker):
 
     # Create connection to service
     def get_model(self, ip, port, port_out):
-        return WKRClient(ip=ip, port=port, port_out=port_out, ignore_all_checks=True)
+        REDIS_IP = '10.40.34.14'
+        REDIS_PORT = 12345
+        REDIS_PASS = None
+        QUEUE_KEY = 'EXAMPLE_QUEUE'
+        redis_client = RedisHandler(QUEUE_KEY, REDIS_IP, REDIS_PORT, password=REDIS_PASS)
+        return WKRClient(ip=ip, port=port, port_out=port_out, ignore_all_checks=True), redis_client
 
     # Do the work loop, just 1 job at a time for efficiency
     def do_work(self, model, logger):
+
+        model, redis_client = model
+
         try:
             # Step 1: get data, ex: from redis
-            input = {'i': 1}
-            # Step 2: model.encode
-            result = model.encode(input)
-            # Step 3: push result
-            status = request.post(PUSH_API, json=result)
+            input = redis_client.pop()
+            if input is not None:
+                # Step 2: model.encode
+                result = model.encode(input)
+                # Step 3: push result
+                status = request.post(PUSH_API, json=result)
 
-            if status.status_code == 200:
-                logger.info('DONE job with input: {}'.format(input))
+                if status.status_code == 200:
+                    logger.info('DONE job with input: {}'.format(input))
+                else:
+                    raise Exception('Push result failed')
             else:
-                raise Exception('Push result failed')
+                time.time(0.5) # sleep for 0.5s
+
         except Exception as e:
             raise Exception("{}\nTHIS IS CUSTOM EXCEPTION for input: {}".format(e, input))
 
     # close model connection to service
     def off_model(self, model):
+        model, redis_client = model
         model.close()
+        redis_client.close()
 
 if __name__ == "__main__":
     from tts_serving.client.helper import get_args_parser

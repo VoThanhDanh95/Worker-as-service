@@ -13,7 +13,36 @@ import zmq
 from termcolor import colored
 from zmq.utils import jsonapi
 
-__all__ = ['set_logger', 'LoggerSeperate', 'get_args_parser', 'get_status_parser', 'get_switch_parser', 'get_shutdown_parser']
+__all__ = ['set_logger', 'LoggerSeperate', 'get_args_parser', 'get_status_parser', 'get_switch_parser', 'get_shutdown_parser', 'get_redis_connection']
+
+class RedisHandler:
+    
+    def __init__(self, queue_key, ip, port, db=0, password=None):
+        self.queue_key = queue_key
+        self.client = get_redis_connection(ip, port, db=db, password=password)
+
+    def push(self, data, custom_queue=None):
+        data = dict(data)
+        data_json = json.dumps(data)
+        target_queue = custom_queue if custom_queue is not None else self.queue_key
+        self.client.rpush(target_queue, data_json)
+
+    def pop(self, custom_queue=None):
+        target_queue = custom_queue if custom_queue is not None else self.queue_key
+        data_json = self.client.rpop(target_queue)
+        if data_json is None:
+            return None
+        data = json.loads(data_json)
+        return data
+
+    def close():
+        # TODO: close redis client
+        pass
+
+def get_redis_connection(ip, port, db=0, password=None):
+    import redis
+    redis_server = redis.StrictRedis(host=ip, port=int(port), db=0, password=password)
+    return redis_server
 
 def set_logger(context, logger_dir=None, verbose=False, error_log=False):
     if os.name == 'nt':  # for Windows
@@ -154,7 +183,7 @@ def get_switch_parser():
                         help='the port_out that a WKRDecentralizeCentral is running on')
     parser.add_argument('-num_client', type=int, default=0,
                         help='Number of worker for each remote server')
-    parser.add_argument('-remote_servers', type=check_remote_server_config, required=True,
+    parser.add_argument('-remote_servers', type=check_remote_server_config,
                         help="str value of array of remote servers: [<ip_addr>, <port_in>, <port_out>], ex: [['localhost', 8888, 8889], ['10.40.34.15', 9888, 9889]]")
     parser.add_argument('-timeout', type=int, default=5000,
                         help='timeout (ms) for connecting to a server')
