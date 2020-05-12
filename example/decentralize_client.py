@@ -37,7 +37,7 @@ class AIModel(WKRWorker):
                 else:
                     raise Exception('Push result failed')
             else:
-                time.time(0.5) # sleep for 0.5s
+                time.sleep(0.5) # sleep for 0.5s
 
         except Exception as e:
             raise Exception("{}\nTHIS IS CUSTOM EXCEPTION for input: {}".format(e, input))
@@ -49,7 +49,7 @@ class AIModel(WKRWorker):
         redis_client.close()
 
 if __name__ == "__main__":
-    from tts_serving.client.helper import get_args_parser
+    from wkr_serving.client.helper import get_args_parser
     SERVICE_PUSH_PORT = 8066
     SERVICE_PULL_PORT = 8068
     args = get_args_parser().parse_args(['-port', '21324',
