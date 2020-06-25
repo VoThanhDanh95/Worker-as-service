@@ -141,10 +141,11 @@ class WKRWorkerSkeleton(Process):
                 outputs = self.predict(model, input_data)
                 end = time.time()
 
-                logger.info('predict {} url in {:0.4f}s'.format(len(input_data), end-start))
+                logger.info('predict {} input in {:0.4f}s'.format(len(input_data), end-start))
 
                 if len(outputs) != len(input_data):
-                    logger.warning("output after process by predict func not match. input: {}, output: {}".format(input_data, outputs))
+                    raise Exception("output after process by predict func not match. input: {}, output: {}".format(input_data, outputs))
+                    # logger.warning("output after process by predict func not match. input: {}, output: {}".format(input_data, outputs))
 
                 outputs = output_postprocessor(outputs)
                 for client_id, output in zip(client_ids, outputs):
@@ -166,6 +167,10 @@ class WKRWorkerSkeleton(Process):
                 for client_id in client_ids:
                     cliend, req_id = client_id.split('#')
                     send_to_next_raw(to_bytes(cliend), to_bytes(req_id), to_bytes(exception_msg), ServerCmd.exception, sink_embed)
+
+            # Prepare to shutdown this process
+            if self.exit_flag.is_set():
+                break
 
     def input_fn_builder(self, socks, input_preprocessor, sink_embed):
         def gen():

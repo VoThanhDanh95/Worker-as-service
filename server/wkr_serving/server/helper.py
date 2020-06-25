@@ -12,7 +12,8 @@ import zmq
 from termcolor import colored
 
 __all__ = ['set_logger', 'get_args_parser', 'LoggerSeperate',
-           'check_tf_version', 'auto_bind', 'import_tf', 'import_torch', 'import_mxnet']
+           'check_tf_version', 'auto_bind', 'import_tf', 'import_torch', 'import_mxnet',
+           'get_cli_start_parser', 'import_class_from_local']
 
 def set_logger(context, logger_dir=None, verbose=False, error_log=False, max_bytes=500*1024*1024, backup_count=10):
     if os.name == 'nt':  # for Windows
@@ -128,7 +129,7 @@ def get_args_parser():
     group1 = parser.add_argument_group('File Paths',
                                        'config the path, checkpoint and filename of a TTS model')
 
-    group1.add_argument('-model_dir', type=str, required=True,
+    group1.add_argument('-model_dir', type=str, default='.',
                         help='directory of models')
     group1.add_argument('-model_name', type=str, default=None,
                         help='filename of the main worker model.')
@@ -149,7 +150,7 @@ def get_args_parser():
                         help='maximum time(ms) for wait for a new request, we all need waveglow to fix input shape, so need to wait a much longer')
     groupwa.add_argument('-cpu', action='store_true', default=False,
                         help='running on CPU (default on GPU)')
-    groupwa.add_argument('-device_map', type=int, nargs='+', default=[],
+    groupwa.add_argument('-device_map', type=int, nargs='+', default=[-1],
                         help='specify the list of GPU device ids that will be used (id starts from 0). \
                         If num_worker > len(device_map), then device will be reused; \
                         if num_worker < len(device_map), then device_map[:num_worker] will be used')
@@ -158,9 +159,9 @@ def get_args_parser():
                                        'config how server utilizes GPU/CPU resources')
     group3.add_argument('-protocol', type=check_protocol, default='obj',
                         help='server-client tranfer protocol')
-    group3.add_argument('-port', '-port_in', '-port_data', type=int, default=5555,
+    group3.add_argument('-port', '-port_in', '-port_data', type=int, required=True,
                         help='server port for receiving data from client')
-    group3.add_argument('-port_out', '-port_result', type=int, default=5556,
+    group3.add_argument('-port_out', '-port_result', type=int, required=True,
                         help='server port for sending result to client')
     group3.add_argument('-http_port', type=int, default=None,
                         help='server port for receiving HTTP requests')
@@ -296,6 +297,24 @@ def get_shutdown_parser():
                         help='timeout (ms) for connecting to a server')
     return parser
 
+def get_cli_start_parser():
+    parser = get_args_parser()
+    parser.add_argument('worker_class', metavar='worker_class', type=str, help='Target worker class')
+    return parser
+
+def import_class_from_local(model_name):
+    import importlib
+    skeleton_splited = model_name.split('.')
+    if len(skeleton_splited) != 2:
+        raise Exception('Format for loading class <filename>.<worker_class_name>, your input: {}'.format(model_name))
+    skeleton_module, skeleton_class = skeleton_splited
+    # skeleton_module = importlib.import_module(skeleton_module)
+    # skeleton_class = getattr(skeleton_module, skeleton_class)
+    spec = importlib.util.spec_from_file_location(skeleton_module, os.path.join(os.getcwd(), f"{skeleton_module}.py"))
+    foo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(foo)
+    skeleton_class = getattr(foo, skeleton_class)
+    return skeleton_class
 
 class TimeContext:
     def __init__(self, msg):

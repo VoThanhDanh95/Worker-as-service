@@ -29,7 +29,7 @@ from .hard_worker import WKRHardWorker
 from .statistic import ServerStatistic
 
 __all__ = ['__version__', 'WKRServer', 'WKRHardWorker']
-__version__ = '1.0.0-a'
+__version__ = '2.0.1'
 
 class WKRServer(threading.Thread):
     def __init__(self, args, hardprocesser=None, httpprocessor=None):
@@ -72,10 +72,12 @@ class WKRServer(threading.Thread):
             'server_start_time': str(datetime.now()),
         }
         self.processes = []
+        self.process_workers = []
+
         self.logdir = args.log_dir
         self.logger = set_logger(colored('NAVIGATOR', 'red'), logger_dir=self.logdir, verbose=args.verbose)
-        self.logger.info('freeze, optimize and export graph, could take a while...')
-        
+        self.server_all_terminated = False
+
         self.is_ready = threading.Event()
 
     def __enter__(self):
@@ -88,7 +90,11 @@ class WKRServer(threading.Thread):
 
     def close(self):
         self.logger.info('shutting down...')
-        self._send_close_signal()
+        if not self.server_all_terminated:
+            self._send_close_signal()
+        else:
+            # already terminated, no need to send the signal again
+            pass
         self.is_ready.clear()
         self.join()
 
@@ -96,7 +102,7 @@ class WKRServer(threading.Thread):
     @zmqd.socket(zmq.PUSH)
     def _send_close_signal(self, _, frontend):
         frontend.connect('tcp://localhost:%d' % self.port)
-        frontend.send_multipart([b'', ServerCmd.terminate, b'', b''])
+        frontend.send_multipart([b'', b'', ServerCmd.terminate, b''])
 
     @staticmethod
     def shutdown(args):
@@ -105,12 +111,35 @@ class WKRServer(threading.Thread):
             with ctx.socket(zmq.PUSH) as frontend:
                 try:
                     frontend.connect('tcp://%s:%d' % (args.ip, args.port))
-                    frontend.send_multipart([b'', ServerCmd.terminate, b'', b''])
+                    frontend.send_multipart([b'', b'', ServerCmd.terminate, b''])
                     print('shutdown signal sent to %d' % args.port)
                 except zmq.error.Again:
                     raise TimeoutError(
                         'no response from the server (with "timeout"=%d ms), please check the following:'
                         'is the server still online? is the network broken? are "port" correct? ' % args.timeout)
+
+    def generate_worker_process(self, args, worker_id, addr_backend_post_list, addr_sink, device_id):
+        process = self.hardprocessor_skeleton(worker_id, self.args, addr_backend_post_list, addr_sink, device_id)
+        return process
+
+    def close_all_worker(self):
+        # exited, close all child process
+        for p in self.process_workers:
+            p.close()
+        self.process_workers = []
+
+    def start_all_worker(self, addr_backend_post_list, addr_sink):
+        self.device_map_main_worker = self._get_device_map(self.num_worker, self.device_map, self.gpu_memory_fraction, run_all_cpu=self.all_cpu)
+        for idx, device_id in enumerate(self.device_map_main_worker):
+            process = self.generate_worker_process(self.args, idx, addr_backend_post_list, addr_sink, device_id)
+            self.process_workers.append(process)
+            process.start()
+
+    def restart_all_worker(self, addr_backend_post_list, addr_sink):
+        self.close_all_worker()
+        self.start_all_worker(addr_backend_post_list, addr_sink)
+        for p in self.process_workers:
+            p.is_ready.wait()
 
     def run(self):
         self._run()
@@ -146,12 +175,7 @@ class WKRServer(threading.Thread):
         # start the post-backend processes
         # WaveWorker: self, id, args, worker_address_list, sink_address, device_id
         self.logger.info('start main-workers')
-        device_map_main_worker = self._get_device_map(self.num_worker, self.device_map, self.gpu_memory_fraction, run_all_cpu=self.all_cpu)
-        for idx, device_id in enumerate(device_map_main_worker):
-            process = self.hardprocessor_skeleton(idx, self.args, addr_backend_post_list, addr_sink, device_id)
-            self.processes.append(process)
-            process.start()
-            # process.is_ready.wait() # start model sequencely
+        self.start_all_worker(addr_backend_post_list, addr_sink)
 
         # start the http-service process
         if self.args.http_port:
@@ -162,8 +186,8 @@ class WKRServer(threading.Thread):
 
         rand_backend_socket = None
         server_status = ServerStatistic()
-
-        for p in self.processes:
+        
+        for p in [*self.processes, *self.process_workers]:
             p.is_ready.wait()
 
         self.is_ready.set()
@@ -187,12 +211,12 @@ class WKRServer(threading.Thread):
                 elif msg == ServerCmd.show_config:
                     self.logger.info('new config request\treq id: %d\tclient: %s' % (int(req_id), client))
                     status_runtime = {'client': client.decode('ascii'),
-                                      'num_process': len(self.processes),
+                                      'num_process': len(self.processes) + len(self.process_workers),
                                       'navigator -> worker': addr_backend_post_list,
                                       'worker -> sink': addr_sink,
                                       'server_current_time': str(datetime.now()),
                                       'statistic': server_status.value,
-                                      'main_device_map': device_map_main_worker,
+                                      'main_device_map': self.device_map_main_worker,
                                       'main_batch_size': self.batch_size,
                                       'protocol': self.transfer_protocol,
                                       'num_concurrent_socket': self.total_concurrent_socket}
@@ -209,19 +233,15 @@ class WKRServer(threading.Thread):
                     # pick random socket
                     rand_backend_socket = random.choice([b for b in backend_socks if b != rand_backend_socket])
 
-                    # info = jsonapi.loads(msg_info)
-                    # if self.transfer_protocol == 'obj':
-                    #     msg = decode_object(msg, info)
-                    # else:
-                    #     msg = decode_ndarray(msg, info)
-
                     # push job
                     push_new_job(client, req_id, msg, msg_info)
 
-        for p in self.processes:
+        # exited, close all child process
+        for p in [*self.processes, *self.process_workers]:
             p.close()
 
         self.logger.info('terminated!')
+        self.server_all_terminated = True
 
     def _get_device_map(self, num_worker, device_map_raw, per_process_gpu_fragment, run_all_cpu=False):
         self.logger.info('get devices map')

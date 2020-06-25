@@ -49,12 +49,14 @@ def convert_bytes_to_pil_image(img_bytes):
         raise NotSupportedInputFile("Wrong input file type, only accept jpg or png image")
 
 class BertHTTPProxy(Process):
+
     def __init__(self, args):
         super().__init__()
         self.args = args
         self.is_ready = Event()
+        self.logger = set_logger(colored('PROXY', 'red'), logger_dir=args.log_dir, verbose=args.verbose)
 
-    def create_flask_app(self):
+    def create_flask_app(self, args):
         try:
             from flask import Flask, request, jsonify, render_template, send_from_directory
             from flask_compress import Compress
@@ -72,7 +74,7 @@ class BertHTTPProxy(Process):
                                   port=self.args.port, port_out=self.args.port_out,
                                   protocol='obj', ignore_all_checks=True)
 
-        logger = set_logger(colored('PROXY', 'red'))
+        logger = set_logger(colored('PROXY', 'red'), logger_dir=args.log_dir, verbose=args.verbose)
 
         if os.path.isdir(self.args.http_stat_dashboard):
             app = Flask(__name__, template_folder=self.args.http_stat_dashboard, static_folder=self.args.http_stat_dashboard)
@@ -245,7 +247,14 @@ class BertHTTPProxy(Process):
 
         return app
 
+    def close(self):
+        self.logger.info('shutting down...')
+        self.is_ready.clear()
+        self.terminate()
+        self.join()
+        self.logger.info('terminated!')
+
     def run(self):
-        app = self.create_flask_app()
+        app = self.create_flask_app(self.args)
         self.is_ready.set()
         app.run(port=self.args.http_port, threaded=True, host='0.0.0.0', debug=False)

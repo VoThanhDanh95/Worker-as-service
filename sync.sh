@@ -34,3 +34,11 @@ if [ "$1" = "--toserver201" ];
 then
     rsync -avz --exclude-from '.gitignore' --exclude-from '.repoignore' . zdeploy@10.40.34.201:/zserver/AI-projects/AILab/worker-as-service/
 fi
+if [ "$1" = "--toserver11" ];
+then
+    rsync -avz --exclude-from '.gitignore' --exclude-from '.repoignore' . zdeploy@10.40.34.11:/zserver/AI-projects/AILab/worker-as-service/
+fi
+if [ "$1" = "--toserver22" ];
+then
+    rsync -avz --exclude-from '.gitignore' --exclude-from '.repoignore' . zdeploy@10.40.34.22:/zserver/AI-projects/AILab/worker-as-service/
+fi
