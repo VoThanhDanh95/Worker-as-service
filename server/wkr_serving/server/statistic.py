@@ -25,7 +25,7 @@ from .http import BertHTTPProxy
 from .zmq_decor import multi_socket
 
 class ServerStatistic:
-    def __init__(self):
+    def __init__(self, sample_limit=1000, interval_seconds=3, secondary_sample_limit=100):
         self._hist_client = defaultdict(int)
         self._client_last_active_time = defaultdict(float)
         self._num_data_req = 0
@@ -36,12 +36,12 @@ class ServerStatistic:
         self._last_two_req_interval = []
         self._last_rps_total = []
         self._last_rps_time = time.time()
-        self._num_last_two_req = 1000
-        self._rps_interval = 3
+        self._num_last_two_req = sample_limit
+        self._rps_interval = interval_seconds
         self._ignored_first = False
 
         self._other_statistic = defaultdict(list)
-        self._other_statistic_limit = 100
+        self._other_statistic_limit = secondary_sample_limit
 
     def update(self, request, ignore_first=False):
 
@@ -60,8 +60,6 @@ class ServerStatistic:
                 self._num_total_seq += 1
                 self._num_data_req += 1
                 tmp = time.time()
-
-                # print(tmp, self._last_rps_time, tmp-self._last_rps_time, '\n', self._last_rps_total)
 
                 if tmp-self._last_rps_time > self._rps_interval:
                     self._last_rps_total.append(self._num_total_seq)
@@ -97,22 +95,11 @@ class ServerStatistic:
             now = time.perf_counter()
             return sum(1 for v in self._client_last_active_time.values() if (now - v) < interval)
 
-        # parts = [{
-        #     'num_data_request': self._num_data_req,
-        #     'num_total_seq': self._num_total_seq,
-        #     'num_sys_request': self._num_sys_req,
-        #     'num_total_request': self._num_data_req + self._num_sys_req,
-        #     'num_total_client': len(self._hist_client),
-        #     'num_active_client': get_num_active_client()},
-        #     get_min_max_avg('request_per_client', self._hist_client.values()),
-        #     get_min_max_avg2('last_two_interval', self._last_two_req_interval),
-        #     get_min_max_avg2('request_per_second', [1. / v for v in self._last_two_req_interval]),
-        # ]
+        # rps = np.array(self._last_rps_total)
+        # rps = (rps[1:]-rps[:-1])/self._rps_interval
+        # rps = rps[rps>0]
+        rps = self.get_request_per_second()
 
-        rps = np.array(self._last_rps_total)
-        rps = (rps[1:]-rps[:-1])/self._rps_interval
-        rps = rps[rps>0]
-        
         parts = [{
             'num_data_request': self._num_data_req,
             'num_total_seq': self._num_total_seq,
@@ -128,6 +115,12 @@ class ServerStatistic:
         ]
 
         return {k: v for d in parts for k, v in d.items()}
+
+    def get_request_per_second(self):
+        rps = np.array(self._last_rps_total)
+        rps = (rps[1:]-rps[:-1])/self._rps_interval
+        rps = rps[rps>0]
+        return rps
 
     def get_min_max_avg(self, name, stat):
         if len(stat) > 0:

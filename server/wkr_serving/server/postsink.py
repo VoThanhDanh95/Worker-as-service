@@ -35,12 +35,26 @@ class WKRSink(Process):
         self.verbose = args.verbose
         self.is_ready = multiprocessing.Event()
         self.worker_socket_addrs = worker_socket_addrs
-
+        
+        self.num_worker = args.num_worker
         self.transfer_protocol = args.protocol
 
         self.current_jobnum = 0
         self.maximum_jobnum = 0
         self.total_processed = 0
+
+        # auto scaling policy
+        self.busy_util_threshold = args.busy_util_threshold
+        self.duration_expand = args.duration_expand
+        self.duration_squeeze = args.duration_squeeze
+        self.util_check_interval_ms = 5*1000 # each 5s
+        self.busycheck_history_num_sample = self.duration_expand//self.util_check_interval_ms
+        self.squeezecheck_history_num_sample = self.duration_squeeze//self.util_check_interval_ms
+        self.util_last_check_timestamp = time.time()
+        self.expand_last_check_timestamp = time.time()
+        self.squeeze_last_check_timestamp = time.time()
+        self.system_squeezed = True
+        self.util_history = []
 
         self.logdir = args.log_dir
         self.logger = set_logger(colored('SINK', 'green'), logger_dir=self.logdir, verbose=args.verbose)
@@ -56,6 +70,78 @@ class WKRSink(Process):
     def run(self):
         self._run()
 
+    def get_ideal_maxload(self, statistic_status):
+        if self.total_processed == 0:
+            return 0
+        # calculate utils
+        per_request_processing_time = np.mean(statistic_status._other_statistic['sys_predict'])
+        # note that maximum_request_per_second is in the ideal condition, not considered data transfer overheat
+        maximum_request_per_second = self.num_worker*(1000/per_request_processing_time)
+        return maximum_request_per_second
+
+    def get_current_utils(self, statistic_status):
+        if self.total_processed == 0:
+            return 0
+            
+        maximum_request_per_second = self.get_ideal_maxload(statistic_status)
+        current_util = max(0, min(1, self.current_jobnum/maximum_request_per_second))
+        return current_util
+
+    def check_internal_utils(self, statistic_status, navigator_sink, logger):
+
+        if self.total_processed < 10:
+            return
+
+        current_timestamp = time.time()
+        current_interval = (current_timestamp - self.util_last_check_timestamp)*1000
+
+        if current_interval>= self.util_check_interval_ms:
+
+            current_util = self.get_current_utils(statistic_status)
+            
+            # logging time interval
+            self.util_history.append([current_interval, current_util])
+            self.util_last_check_timestamp = current_timestamp
+
+            # only save enough sample to check
+            logger.warning("Utils check, num sample: {} util mean: {}".format(len(self.util_history), np.mean([a[1] for a in self.util_history])))
+            if len(self.util_history) > self.squeezecheck_history_num_sample:
+                self.util_history.pop(0)
+
+            # checking if server is busy
+            busycheck_histories = self.util_history[-self.busycheck_history_num_sample:]
+            logger.warning('Checking expand_worker, num sample: {} util mean: {}'.format(len(busycheck_histories), np.mean([a[1] for a in busycheck_histories])))
+            if ((current_timestamp-self.expand_last_check_timestamp)*1000) >= self.duration_expand \
+                and len(busycheck_histories) == self.busycheck_history_num_sample \
+                and np.mean(np.array([a[1] for a in busycheck_histories]))>=self.busy_util_threshold:
+                # service is really busy
+                logger.warning('SENT expand_worker, num sample: {} util mean: {}'.format(len(busycheck_histories), np.mean([a[1] for a in busycheck_histories])))
+                navigator_sink.send(ServerCmd.expand_worker)
+
+                self.system_squeezed = False
+                # reset timer for the next checking
+                self.expand_last_check_timestamp = current_timestamp
+                self.squeeze_last_check_timestamp = current_timestamp
+
+            elif ((current_timestamp-self.squeeze_last_check_timestamp)*1000) >= self.duration_squeeze \
+                and not self.system_squeezed:
+                # if server not busy, check if it is free enough
+                squeezecheck_histories = self.util_history[-self.squeezecheck_history_num_sample:]
+                logger.warning('Checking squeeze_worker, num sample: {} util mean: {}'.format(len(squeezecheck_histories), np.mean([a[1] for a in squeezecheck_histories])))
+                if len(squeezecheck_histories) == self.squeezecheck_history_num_sample \
+                    and np.mean(np.array([a[1] for a in squeezecheck_histories])) < self.busy_util_threshold:
+                    # service is not quite busy
+                    logger.warning('SENT squeeze_worker, num sample: {} util mean: {}'.format(len(squeezecheck_histories), np.mean([a[1] for a in squeezecheck_histories])))
+                    navigator_sink.send(ServerCmd.squeeze_worker)
+
+                    self.system_squeezed = True
+                    # reset timer for the next checking
+                    self.expand_last_check_timestamp = current_timestamp
+                    self.squeeze_last_check_timestamp = current_timestamp
+        else:
+            # nothing to check when not in checking interval
+            pass
+        
     @zmqd.socket(zmq.PULL)
     @zmqd.socket(zmq.PAIR)
     @zmqd.socket(zmq.PUB)
@@ -98,7 +184,7 @@ class WKRSink(Process):
 
         while not self.exit_flag.is_set():
             try:
-                socks = dict(poller.poll())
+                socks = dict(poller.poll(1000))
 
                 if socks.get(receiver) == zmq.POLLIN:
                     client, req_id, msg, msg_info = recv_from_prev_raw(receiver)
@@ -162,12 +248,15 @@ class WKRSink(Process):
                         logger.info('send config\tclient %s' % client_addr)
                         prev_status = jsonapi.loads(msg_info)
                         
+                        ideal_maxload = self.get_ideal_maxload(sink_status)
+                        current_util = self.get_current_utils(sink_status)
                         status={
                             'statistic_postsink': {**{
                                 'total_job_in_queue': self.current_jobnum,
                                 'maximum_job_in_queue': self.maximum_jobnum,
                                 'total_processed_job': self.total_processed,
-                                'util': self.current_jobnum/(self.maximum_jobnum) if self.maximum_jobnum > 0 else 0
+                                'util': current_util,
+                                'ideal_maxload': ideal_maxload,
                             }, **sink_status.value}
                         }
                         send_to_next('obj', client_addr, req_id, {**prev_status, **status}, sender)
@@ -175,6 +264,8 @@ class WKRSink(Process):
                         # not yet registed to the server
                         send_to_next_raw(client_addr, req_id, msg_info, ServerCmd.exception, sender)
                         logger_error.error("exception received {}#{}\{}".format(client_addr, req_id, msg_info))
+
+                self.check_internal_utils(sink_status, frontend, logger)
 
             except Exception as e:
                 logger_error.error('{}'.format(e), exc_info=True)

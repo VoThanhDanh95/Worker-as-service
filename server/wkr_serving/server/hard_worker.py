@@ -10,7 +10,7 @@ from .worker_skeleton import WKRWorkerSkeleton
 
 class WKRHardWorker(WKRWorkerSkeleton):
 
-    def __init__(self, id, args, worker_address_list, sink_address, device_id, name='HARD-WORKER', color='blue'):
+    def __init__(self, id, args, worker_address_list, sink_address, device_id, name='WORKER', color='blue'):
         super().__init__(id, args, worker_address_list, sink_address, device_id, 
         args.gpu_memory_fraction, 
         args.model_name, 

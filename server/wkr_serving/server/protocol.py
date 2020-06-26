@@ -23,6 +23,9 @@ class ServerCmd:
     exception = b'EXCEPTION'
     statistic = b'STATISTIC'
 
+    expand_worker = b'EXPAND_WORKER'
+    squeeze_worker = b'SQUEEZE_WORKER'
+
     @staticmethod
     def is_valid(cmd):  
         return any(not k.startswith('__') and v == cmd for k, v in vars(ServerCmd).items())

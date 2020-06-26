@@ -144,6 +144,7 @@ def get_args_parser():
                         Should be in range [0.0, 1.0]')
     groupwa.add_argument('-num_worker', type=int, default=1,
                         help='number of server instances')
+    
     groupwa.add_argument('-batch_size', type=int, default=10,
                         help='maximum number of sequences handled by each worker')
     groupwa.add_argument('-batch_group_timeout', type=int, default=1,
@@ -154,6 +155,19 @@ def get_args_parser():
                         help='specify the list of GPU device ids that will be used (id starts from 0). \
                         If num_worker > len(device_map), then device will be reused; \
                         if num_worker < len(device_map), then device_map[:num_worker] will be used')
+
+    groupscale = parser.add_argument_group('Scaling Configs',
+                                       'config how server auto scaling')
+    groupscale.add_argument('-num_worker_expanded', type=int, default=0,
+                        help='maximum number of worker will expand')
+    groupscale.add_argument('-device_to_expand', type=int, nargs='+', default=[0],
+                        help='specify the list of GPU device ids that will be used (id starts from 0) to auto scaling the service')
+    groupscale.add_argument('-busy_util_threshold', type=float, default=0.95,
+                        help='Service utils threshold to be considered as overflowed')
+    groupscale.add_argument('-duration_expand', type=int, default=300000,
+                        help='Max time (milliseconds) to wait until service start to expand, default 300000ms (5min)')
+    groupscale.add_argument('-duration_squeeze', type=int, default=600000,
+                        help='Max time (milliseconds) to wait until service start to squeeze (remove all expanded workers), default 600000ms (10min)')
 
     group3 = parser.add_argument_group('Serving Configs',
                                        'config how server utilizes GPU/CPU resources')

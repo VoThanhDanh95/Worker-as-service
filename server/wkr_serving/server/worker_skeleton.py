@@ -55,7 +55,7 @@ class WKRWorkerSkeleton(Process):
         self.is_ready = multiprocessing.Event()
 
         self.logdir = args.log_dir
-        self.logger = set_logger(colored('%s-%d' % (self.name, self.worker_id), self.color), logger_dir=self.logdir, verbose=self.verbose)
+        self.logger = set_logger(colored('%s-%s' % (self.name, str(self.worker_id)), self.color), logger_dir=self.logdir, verbose=self.verbose)
 
     def close(self):
         self.logger.info('shutting down...')
@@ -96,7 +96,7 @@ class WKRWorkerSkeleton(Process):
         return client, req_id, msg
 
     def new_logger(self):
-        name = '%s-%d' % (self.name, self.worker_id)
+        name = '%s-%s' % (self.name, str(self.worker_id))
         color = self.color
         return LoggerSeperate(name, color, logger_dir=self.logdir, verbose=self.verbose)
 
@@ -140,18 +140,22 @@ class WKRWorkerSkeleton(Process):
                 start = time.time()
                 outputs = self.predict(model, input_data)
                 end = time.time()
+                predict_time = (end-start)*1000
+                predict_time_per_input = predict_time/len(input_data)
+                logger.info('predict {} input in {:0.4f}ms, avg/item: {:0.4f}ms'.format(len(input_data), predict_time, predict_time_per_input))
 
-                logger.info('predict {} input in {:0.4f}s'.format(len(input_data), end-start))
+                record_statistic({
+                    'sys_batchsize': len(input_data),
+                    'sys_predict': predict_time_per_input
+                })
 
                 if len(outputs) != len(input_data):
-                    raise Exception("output after process by predict func not match. input: {}, output: {}".format(input_data, outputs))
-                    # logger.warning("output after process by predict func not match. input: {}, output: {}".format(input_data, outputs))
+                    raise Exception("Output after process by predict func not match. input: {}, output: {}".format(input_data, outputs))
 
                 outputs = output_postprocessor(outputs)
                 for client_id, output in zip(client_ids, outputs):
                     cliend, req_id = client_id.split('#')
                     self.process_output(output, cliend, req_id, sink_embed)
-                    # send_to_next(self.transfer_proto, cliend, req_id, output, sink_embed)
                     logger.info('sent to sink\tjob id: {}#{}'.format(cliend, req_id))
                     
             except Exception as e:
