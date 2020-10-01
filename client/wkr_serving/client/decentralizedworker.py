@@ -67,7 +67,7 @@ class WKRWorker(Process):
             except Exception as e:
                 logger.error('error: {}'.format(e))
 
-            time.sleep(0.01) # sleep 1ms
+            time.sleep(0.03) # sleep 3ms
 
         self.off_model(model)
         logger.info('EXITED')

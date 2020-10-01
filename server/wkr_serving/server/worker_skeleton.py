@@ -223,7 +223,6 @@ class WKRWorkerSkeleton(Process):
                         if d is not None:
                             datas.append(d)
                     if len(datas) > 0:
-                        
                         client_ids = [d['client_id'] for d in datas]
                         batch_raw = [d['client_msg'] for d in datas]
                         batch = self.batching(batch_raw)

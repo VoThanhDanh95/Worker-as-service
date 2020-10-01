@@ -194,7 +194,7 @@ class WKRSink(Process):
                         stat_info = jsonapi.loads(msg)
                         for k, v in stat_info.items():
                             sink_status.update_key(k, v)
-                        logger.info('Update statistic\tjob id: {}#{} \info: {}'.format(client, req_id, stat_info))
+                        logger.info('Update statistic\tjob id: {}#{}'.format(client, req_id))
                     else:
                         # main processing flow
                         if msg_info == ServerCmd.exception:
@@ -215,7 +215,8 @@ class WKRSink(Process):
                                 to_bytes(req_id), 
                                 b'1'
                             ])
-                            
+                        sink_status.update_key('sys_output_byte', len(msg))
+
                         send_to_next_raw(client, req_id, msg, msg_info, sender)
 
                         # update latency
@@ -239,6 +240,7 @@ class WKRSink(Process):
                         # update latency
                         latency_status[job_id]['start'] = job_info['time']
                         check_status(sink_status, latency_status)
+                        sink_status.update_key('sys_input_byte', job_info['input_byte'])
 
                         logger.info('registed job\tjob id: {}\tleft: {}'.format(job_id, self.current_jobnum))
 

@@ -25,7 +25,7 @@ from .http import BertHTTPProxy
 from .zmq_decor import multi_socket
 
 class ServerStatistic:
-    def __init__(self, sample_limit=1000, interval_seconds=3, secondary_sample_limit=100):
+    def __init__(self, sample_limit=1000, interval_seconds=3, secondary_sample_limit=1000):
         self._hist_client = defaultdict(int)
         self._client_last_active_time = defaultdict(float)
         self._num_data_req = 0

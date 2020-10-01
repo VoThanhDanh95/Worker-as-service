@@ -35,6 +35,9 @@ class RedisHandler:
         data = json.loads(data_json)
         return data
 
+    def set(self, key, data):
+        self.client.set(key, data)
+
     def close():
         # TODO: close redis client
         pass

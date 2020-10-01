@@ -147,7 +147,7 @@ def get_args_parser():
     
     groupwa.add_argument('-batch_size', type=int, default=10,
                         help='maximum number of sequences handled by each worker')
-    groupwa.add_argument('-batch_group_timeout', type=int, default=1,
+    groupwa.add_argument('-batch_group_timeout', type=int, default=5,
                         help='maximum time(ms) for wait for a new request, we all need waveglow to fix input shape, so need to wait a much longer')
     groupwa.add_argument('-cpu', action='store_true', default=False,
                         help='running on CPU (default on GPU)')
