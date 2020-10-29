@@ -104,18 +104,18 @@ class WKRSink(Process):
             self.util_last_check_timestamp = current_timestamp
 
             # only save enough sample to check
-            logger.warning("Utils check, num sample: {} util mean: {}".format(len(self.util_history), np.mean([a[1] for a in self.util_history])))
+            # logger.warning("Utils check, num sample: {} util mean: {}".format(len(self.util_history), np.mean([a[1] for a in self.util_history])))
             if len(self.util_history) > self.squeezecheck_history_num_sample:
                 self.util_history.pop(0)
 
             # checking if server is busy
             busycheck_histories = self.util_history[-self.busycheck_history_num_sample:]
-            logger.warning('Checking expand_worker, num sample: {} util mean: {}'.format(len(busycheck_histories), np.mean([a[1] for a in busycheck_histories])))
+            # logger.warning('Checking expand_worker, num sample: {} util mean: {}'.format(len(busycheck_histories), np.mean([a[1] for a in busycheck_histories])))
             if ((current_timestamp-self.expand_last_check_timestamp)*1000) >= self.duration_expand \
                 and len(busycheck_histories) == self.busycheck_history_num_sample \
                 and np.mean(np.array([a[1] for a in busycheck_histories]))>=self.busy_util_threshold:
                 # service is really busy
-                logger.warning('SENT expand_worker, num sample: {} util mean: {}'.format(len(busycheck_histories), np.mean([a[1] for a in busycheck_histories])))
+                # logger.warning('SENT expand_worker, num sample: {} util mean: {}'.format(len(busycheck_histories), np.mean([a[1] for a in busycheck_histories])))
                 navigator_sink.send(ServerCmd.expand_worker)
 
                 self.system_squeezed = False
@@ -127,11 +127,11 @@ class WKRSink(Process):
                 and not self.system_squeezed:
                 # if server not busy, check if it is free enough
                 squeezecheck_histories = self.util_history[-self.squeezecheck_history_num_sample:]
-                logger.warning('Checking squeeze_worker, num sample: {} util mean: {}'.format(len(squeezecheck_histories), np.mean([a[1] for a in squeezecheck_histories])))
+                # logger.warning('Checking squeeze_worker, num sample: {} util mean: {}'.format(len(squeezecheck_histories), np.mean([a[1] for a in squeezecheck_histories])))
                 if len(squeezecheck_histories) == self.squeezecheck_history_num_sample \
                     and np.mean(np.array([a[1] for a in squeezecheck_histories])) < self.busy_util_threshold:
                     # service is not quite busy
-                    logger.warning('SENT squeeze_worker, num sample: {} util mean: {}'.format(len(squeezecheck_histories), np.mean([a[1] for a in squeezecheck_histories])))
+                    # logger.warning('SENT squeeze_worker, num sample: {} util mean: {}'.format(len(squeezecheck_histories), np.mean([a[1] for a in squeezecheck_histories])))
                     navigator_sink.send(ServerCmd.squeeze_worker)
 
                     self.system_squeezed = True
