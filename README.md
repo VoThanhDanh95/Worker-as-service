@@ -14,7 +14,7 @@ pip install -e .
 
 - step 4: read example in `worker-as-service/example` for custom server:
 
-
+Happy coding :))
 
 ---
 <h1 align="center">bert-as-service</h1>
